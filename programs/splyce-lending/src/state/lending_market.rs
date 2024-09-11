@@ -18,7 +18,7 @@ pub struct LendingMarket {
     /// Token program id
     pub token_program_id: Pubkey,
     /// Outflow rate limiter denominated in dollars
-    // pub rate_limiter: RateLimiter, // 2024-09-10 commented out temporarily before RateLimiter implementation imports
+    pub rate_limiter: RateLimiter, // 2024-09-10 commented out temporarily before RateLimiter implementation imports
     /// whitelisted liquidator
     pub whitelisted_liquidator: Option<Pubkey>,
     /// risk authority (additional pubkey used for setting params)
@@ -40,7 +40,7 @@ impl LendingMarket {
         self.owner = params.owner;
         self.quote_currency = params.quote_currency;
         self.token_program_id = params.token_program_id;
-        // self.rate_limiter = RateLimiter::default(); // 2024-09-10 commented out temporarily before RateLimiter implementation imports
+        self.rate_limiter = RateLimiter::default(); // 2024-09-10 commented out temporarily before RateLimiter implementation imports
         self.whitelisted_liquidator = None;
         self.risk_authority = params.owner;
     }

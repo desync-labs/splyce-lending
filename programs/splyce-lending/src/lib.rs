@@ -2,6 +2,9 @@ use anchor_lang::prelude::*;
 
 pub mod instructions;
 pub mod state;
+pub mod error;
+pub mod math;
+
 
 pub use instructions::*;
 pub use state::*;
