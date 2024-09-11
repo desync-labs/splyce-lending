@@ -88,7 +88,7 @@ impl RateLimiter {
     fn current_outflow(&self, cur_slot: u64) -> std::result::Result<Decimal, ProgramError> {
         if self.config.window_duration == 0 {
             msg!("Window duration cannot be 0");
-            return err!(LendingError::InvalidAccountInput);
+            return Err(LendingError::InvalidAccountInput.into());
         }
 
         // assume the prev_window's outflow is even distributed across the window
@@ -131,7 +131,7 @@ impl RateLimiter {
 
         let cur_outflow = self.current_outflow(cur_slot)?;
         if cur_outflow.try_add(qty)? > Decimal::from(self.config.max_outflow) {
-            err!(LendingError::OutflowRateLimitExceeded)
+            Err(LendingError::OutflowRateLimitExceeded.into())
         } else {
             self.cur_qty = self.cur_qty.try_add(qty)?;
             Ok(())
