@@ -1,5 +1,7 @@
 use solana_program::{slot_history::Slot};
 use anchor_lang::prelude::*;
+use anchor_lang::Space;
+
 
 use crate::{
     error::LendingError,
@@ -10,7 +12,7 @@ use crate::{
 /// guarantee: at any point, the outflow between [cur_slot - slot.window_duration, cur_slot]
 /// is less than 2x max_outflow.
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
 pub struct RateLimiter {
     /// configuration parameters
     pub config: RateLimiterConfig,
@@ -25,7 +27,7 @@ pub struct RateLimiter {
 }
 
 /// Lending market configuration parameters
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, AnchorSerialize, AnchorDeserialize)]
 pub struct RateLimiterConfig {
     /// Rate limiter window size in slots
     pub window_duration: u64,
@@ -83,10 +85,10 @@ impl RateLimiter {
     }
 
     /// Calculate current outflow. Must only be called after ._update()!
-    fn current_outflow(&self, cur_slot: u64) -> Result<Decimal> {
+    fn current_outflow(&self, cur_slot: u64) -> std::result::Result<Decimal, ProgramError> {
         if self.config.window_duration == 0 {
             msg!("Window duration cannot be 0");
-            return Err(LendingError::InvalidAccountInput.into());
+            return err!(LendingError::InvalidAccountInput);
         }
 
         // assume the prev_window's outflow is even distributed across the window
@@ -99,7 +101,7 @@ impl RateLimiter {
     }
 
     /// Calculate remaining outflow for the current window
-    pub fn remaining_outflow(&mut self, cur_slot: u64) -> Result<Decimal> {
+    pub fn remaining_outflow(&mut self, cur_slot: u64) -> std::result::Result<Decimal, ProgramError> {
         // rate limiter is disabled if window duration == 0. this is here because we don't want to
         // brick borrows/withdraws in permissionless pools on program upgrade.
         if self.config.window_duration == 0 {
@@ -118,7 +120,7 @@ impl RateLimiter {
     }
 
     /// update rate limiter with new quantity. errors if rate limit has been reached
-    pub fn update(&mut self, cur_slot: u64, qty: Decimal) -> Result<()> {
+    pub fn update(&mut self, cur_slot: u64, qty: Decimal) -> std::result::Result<(), ProgramError> {
         // rate limiter is disabled if window duration == 0. this is here because we don't want to
         // brick borrows/withdraws in permissionless pools on program upgrade.
         if self.config.window_duration == 0 {
@@ -129,7 +131,7 @@ impl RateLimiter {
 
         let cur_outflow = self.current_outflow(cur_slot)?;
         if cur_outflow.try_add(qty)? > Decimal::from(self.config.max_outflow) {
-            Err(LendingError::OutflowRateLimitExceeded.into())
+            err!(LendingError::OutflowRateLimitExceeded)
         } else {
             self.cur_qty = self.cur_qty.try_add(qty)?;
             Ok(())
@@ -147,6 +149,18 @@ impl Default for RateLimiter {
             1,
         )
     }
+}
+
+/// Implement Space for RateLimiterConfig
+impl Space for RateLimiterConfig {
+    const INIT_SPACE: usize = 16; // 8 bytes for window_duration + 8 bytes for max_outflow
+}
+
+/// Implement Space for RateLimiter
+impl Space for RateLimiter {
+    const INIT_SPACE: usize = RateLimiterConfig::INIT_SPACE + 24 + 8 + 24;
+    // 16 bytes for RateLimiterConfig + 24 bytes for Decimal (prev_qty) + 
+    // 8 bytes for window_start (Slot) + 24 bytes for Decimal (cur_qty)
 }
 
 /// Size of RateLimiter when packed into account

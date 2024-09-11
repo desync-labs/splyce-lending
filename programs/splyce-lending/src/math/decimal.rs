@@ -17,7 +17,8 @@ use crate::{
     math::{common::*, Rate},
 };
 use solana_program::program_error::ProgramError;
-
+use anchor_lang::{AnchorSerialize, AnchorDeserialize};
+use borsh::io::{self, Write, Read};
 use std::{convert::TryFrom, fmt};
 use uint::construct_uint;
 
@@ -228,18 +229,37 @@ impl TryMul<Decimal> for Decimal {
     }
 }
 
-// impl AnchorSerialize for Example {
-//     fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
-//         self.field1.serialize(writer)?;
-//         self.field2.serialize(writer)?;
-//         Ok(())
-//     }
-// }
+/// Implementing AnchorSerialize for Decimal
+impl AnchorSerialize for Decimal {
+    fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        // Serialize each of the three underlying u64 words in little-endian byte order
+        for word in self.0.0.iter() {
+            writer.write_all(&word.to_le_bytes())?;
+        }
+        Ok(())
+    }
+}
 
-// impl AnchorDeserialize for Example {
-//     fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-//         let field1 = u64::deserialize(buf)?;
-//         let field2 = String::deserialize(buf)?;
-//         Ok(Example { field1, field2 })
-//     }
-// }
+/// Implementing AnchorDeserialize for Decimal
+impl AnchorDeserialize for Decimal {
+    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
+        let mut words = [0u64; 3]; // U192 is made up of 3 u64 words
+        for word in words.iter_mut() {
+            let mut word_bytes = [0u8; 8]; // Each u64 is 8 bytes
+            buf.read_exact(&mut word_bytes)?; // Read the 8 bytes for the u64
+            *word = u64::from_le_bytes(word_bytes); // Convert the bytes into a u64
+        }
+        Ok(Decimal(U192(words))) // Reconstruct the U192 from the three words
+    }
+
+    /// Implementing `deserialize_reader` as required by AnchorDeserialize trait.
+    fn deserialize_reader<R: Read>(reader: &mut R) -> io::Result<Self> {
+        let mut words = [0u64; 3]; // U192 is made up of 3 u64 words
+        for word in words.iter_mut() {
+            let mut word_bytes = [0u8; 8]; // Each u64 is 8 bytes
+            reader.read_exact(&mut word_bytes)?; // Read the 8 bytes for the u64 from the reader
+            *word = u64::from_le_bytes(word_bytes); // Convert the bytes into a u64
+        }
+        Ok(Decimal(U192(words))) // Reconstruct the U192 from the three words
+    }
+}
