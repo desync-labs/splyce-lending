@@ -7,4 +7,10 @@ pub enum ErrorCode {
 
     #[msg("Invalid Argument")]
     InvalidArgument,
+
+    #[msg("Unauthorized")]
+    Unauthorized,
+
+    #[msg("Program is not the owner of the account")]
+    ProgramNotAccountOwner,
 }

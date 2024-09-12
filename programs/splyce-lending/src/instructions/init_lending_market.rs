@@ -43,21 +43,3 @@ pub fn handle_init_lending_market(
 
     Ok(())
 }
-
-// pub fn handle_init_lending_market(
-//     ctx: Context<LendingMarketInit>,     
-//     owner: Pubkey,
-//     quote_currency: [u8; 32]
-// ) -> Result<()> {
-//     let lending_market = &mut ctx.accounts.lending_market;
-//     let token_program = &ctx.accounts.token_program;
-//     let program_id = &ctx.program_id;
-//     lending_market.init(InitLendingMarketParams {
-//         bump_seed: Pubkey::find_program_address(&[lending_market.key().as_ref()], *program_id).1,
-//         owner,
-//         quote_currency,
-//         token_program_id: *token_program.key,
-//     });
-
-//     Ok(())
-// }

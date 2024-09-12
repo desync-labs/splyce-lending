@@ -2,13 +2,11 @@ use anchor_lang::prelude::*;
 
 pub mod instructions;
 pub mod state;
-pub mod safe_math;
 pub mod error;
 
 pub use instructions::*;
 pub use state::*;
-pub use safe_math::*;
-pub use error::*;
+// pub use error::*; // commented out for now
 
 declare_id!("6LQmSxSmq8mTSBqTcufK9eJXqTyrcQx8BYy2qM8CMFpr");
 
@@ -22,5 +20,16 @@ pub mod splyce_lending {
     ) -> Result<()> {
         msg!("Instruction: init_lending_market");
         handle_init_lending_market(ctx, quote_currency)
+    }
+
+    pub fn set_lending_market_owner_and_config(
+        ctx: Context<LendingMarketSet>,
+        new_owner: Pubkey,
+        rate_limiter_config: RateLimiterConfig,
+        whitelisted_liquidator: Option<Pubkey>,
+        risk_authority: Pubkey,
+    ) -> Result<()> {
+        msg!("Instruction: set_lending_market_owner_and_config");
+        handle_set_lending_market_owner_and_config(ctx, new_owner, rate_limiter_config, whitelisted_liquidator, risk_authority)
     }
 }

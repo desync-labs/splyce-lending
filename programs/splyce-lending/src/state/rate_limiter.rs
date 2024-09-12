@@ -1,6 +1,5 @@
 use anchor_lang::prelude::*;
 use solana_program::slot_history::Slot;
-use crate::safe_math::SafeMath;
 use crate::error::ErrorCode;
 
 
