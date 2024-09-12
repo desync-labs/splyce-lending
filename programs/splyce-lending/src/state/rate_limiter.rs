@@ -1,4 +1,6 @@
+// use solana_program::{slot_history::Slot, program_error::ProgramError};
 use solana_program::{slot_history::Slot};
+// use anchor_lang::prelude::{msg, AnchorSerialize, AnchorDeserialize};
 use anchor_lang::prelude::*;
 use anchor_lang::Space;
 
@@ -55,7 +57,8 @@ impl RateLimiter {
     fn _update(&mut self, cur_slot: u64) -> Result<()> {
         if cur_slot < self.window_start {
             msg!("Current slot is less than window start, which is impossible");
-            return Err(LendingError::InvalidAccountInput.into());
+            // return Err(LendingError::InvalidAccountInput.into());
+            return Err(ProgramError::from(LendingError::InvalidAccountInput).into());
         }
 
         // floor wrt window duration
