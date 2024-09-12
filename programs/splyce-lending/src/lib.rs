@@ -2,9 +2,13 @@ use anchor_lang::prelude::*;
 
 pub mod instructions;
 pub mod state;
+pub mod safe_math;
+pub mod error;
 
 pub use instructions::*;
 pub use state::*;
+pub use safe_math::*;
+pub use error::*;
 
 declare_id!("6LQmSxSmq8mTSBqTcufK9eJXqTyrcQx8BYy2qM8CMFpr");
 
