@@ -22,8 +22,12 @@ pub struct RateLimiter {
     cur_qty: u128, //16 bytes
 }
 
+impl RateLimiter {
+    const LEN: usize = 8 + RateLimiterConfig::LEN + 16 + 8 + 16;
+}
+
 impl anchor_lang::Space for RateLimiter {
-    const INIT_SPACE: usize = 64;
+    const INIT_SPACE: usize = 8 + RateLimiter::LEN; // 8 bytes for the account discriminator in case it may be used solo
 }
 
 /// Lending market configuration parameters
@@ -34,6 +38,10 @@ pub struct RateLimiterConfig {
     pub window_duration: u64, //8 bytes
     /// Rate limiter param. Max outflow of tokens in a window
     pub max_outflow: u128, // 16 bytes
+}
+
+impl RateLimiterConfig {
+    const LEN: usize = 8 + 16;
 }
 
 impl RateLimiter {
@@ -54,6 +62,16 @@ impl RateLimiter {
     }
 
     fn _update(&mut self, cur_slot: u64) -> Result<()> {
+        if cur_slot < self.window_start {
+            msg!("Current slot is less than window start, which is impossible");
+            return Err(ErrorCode::SlotLessThanWindowStart.into());
+        }
+
+        if self.config.window_duration == 0 {
+            // No action needed if rate limiting is disabled
+            return Ok(());
+        }
+
         if cur_slot < self.window_start {
             msg!("Current slot is less than window start, which is impossible");
             return Err(ErrorCode::InvalidArgument.into());
@@ -78,19 +96,42 @@ impl RateLimiter {
         Ok(())
     }
 
-    /// Calculate current outflow. Must only be called after ._update()!
+    /// Calculate current outflow. Must only be called after `_update()`!
+    ///
+    /// The `current_outflow` is calculated by taking a weighted sum of `prev_qty` and `cur_qty`.
+    /// The weight for `prev_qty` decreases linearly over the window duration.
+    /// This simulates a sliding window rate limiter.
     fn current_outflow(&self, cur_slot: u64) -> Result<u128> {
+        // Ensure window_duration is valid
         if self.config.window_duration == 0 {
             msg!("Window duration cannot be 0");
             return Err(ErrorCode::InvalidArgument.into());
         }
-
-        let prev_weight = (self.config.window_duration as u128)
-            .saturating_sub((cur_slot - self.window_start) as u128 + 1)
+        // Calculate how many slots have elapsed since the window started
+        let elapsed_slots = cur_slot - self.window_start;
+        // If more than one window duration has passed, prev_qty does not contribute
+        if elapsed_slots >= self.config.window_duration {
+            return Ok(self.cur_qty);
+        }
+        // Calculate the weight for prev_qty
+        let prev_weight = if elapsed_slots < self.config.window_duration {
+            // Linear decay of weight over the window duration
+            (self.config.window_duration - elapsed_slots) as u128
+        } else {
+            // No overlap with previous window
+            0
+        };
+        // Weighted sum of prev_qty and cur_qty
+        let prev_weight = prev_weight.checked_div(self.config.window_duration as u128)
+            .ok_or(ErrorCode::InvalidArgument)?;
+        
+        let weighted_prev_qty = self.prev_qty.checked_mul(prev_weight)
+            .ok_or(ErrorCode::MathOverflow)?
             .checked_div(self.config.window_duration as u128)
             .ok_or(ErrorCode::InvalidArgument)?;
-
-        Ok(prev_weight * self.prev_qty + self.cur_qty)
+        let total_outflow = weighted_prev_qty.checked_add(self.cur_qty)
+            .ok_or(ErrorCode::MathOverflow)?;
+        Ok(total_outflow)
     }
 
     /// Calculate remaining outflow for the current window

@@ -13,4 +13,13 @@ pub enum ErrorCode {
 
     #[msg("Program is not the owner of the account")]
     ProgramNotAccountOwner,
+
+    #[msg("Zero division error")]
+    ZeroDivisionError,
+
+    #[msg("MathOverflow")]
+    MathOverflow,
+
+    #[msg("Slot Less Than Window Start")]
+    SlotLessThanWindowStart,
 }
