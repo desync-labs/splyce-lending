@@ -29,8 +29,8 @@ pub fn handle_set_lending_market_owner_and_config(
     require!(&signer.key() == &lending_market.owner, ErrorCode::Unauthorized);
 
     lending_market.owner = new_owner;
-     //rater_limiter.window_duration = 0 means no use of rate limiter
-     //rate_limiter.max_outflow = 0 means no more outflow of liquidity
+    require!(rate_limiter_config.window_duration != 0, ErrorCode::InvalidArgument);
+    //rate_limiter.max_outflow = 0 means no more outflow of liquidity
     lending_market.rate_limiter = RateLimiter::new(rate_limiter_config, Clock::get()?.slot);
     lending_market.whitelisted_liquidator = whitelisted_liquidator;
     lending_market.risk_authority = risk_authority;
