@@ -1,8 +1,8 @@
 use anchor_lang::prelude::*;
 
+pub mod error;
 pub mod instructions;
 pub mod state;
-pub mod error;
 
 pub use instructions::*;
 pub use state::*;
@@ -15,8 +15,8 @@ pub mod splyce_lending {
     use super::*;
 
     pub fn init_lending_market(
-        ctx: Context<LendingMarketInit>,  
-        quote_currency: [u8; 32]
+        ctx: Context<LendingMarketInit>,
+        quote_currency: [u8; 32],
     ) -> Result<()> {
         msg!("Instruction: init_lending_market");
         handle_init_lending_market(ctx, quote_currency)
@@ -30,6 +30,12 @@ pub mod splyce_lending {
         risk_authority: Pubkey,
     ) -> Result<()> {
         msg!("Instruction: set_lending_market_owner_and_config");
-        handle_set_lending_market_owner_and_config(ctx, new_owner, rate_limiter_config, whitelisted_liquidator, risk_authority)
+        handle_set_lending_market_owner_and_config(
+            ctx,
+            new_owner,
+            rate_limiter_config,
+            whitelisted_liquidator,
+            risk_authority,
+        )
     }
 }

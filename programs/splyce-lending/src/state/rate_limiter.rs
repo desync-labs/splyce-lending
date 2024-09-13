@@ -1,14 +1,12 @@
+use crate::error::ErrorCode;
 use anchor_lang::prelude::*;
 use solana_program::slot_history::Slot;
-use crate::error::ErrorCode;
-
 
 /// Sliding Window Rate limiter
 /// guarantee: at any point, the outflow between [cur_slot - slot.window_duration, cur_slot]
 /// is less than 2x max_outflow.
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
-// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RateLimiter {
     /// configuration parameters
     pub config: RateLimiterConfig, // 24 bytes
@@ -108,7 +106,9 @@ impl RateLimiter {
             return Err(ErrorCode::InvalidArgument.into());
         }
         // Calculate how many slots have elapsed since the window started
-        let elapsed_slots = cur_slot - self.window_start;
+        let elapsed_slots = cur_slot
+            .checked_sub(self.window_start)
+            .ok_or(ErrorCode::MathOverflow)? as u128;
         // If more than one window duration has passed, prev_qty does not contribute
         if elapsed_slots >= self.config.window_duration {
             return Ok(self.cur_qty);
@@ -122,14 +122,18 @@ impl RateLimiter {
             0
         };
         // Weighted sum of prev_qty and cur_qty
-        let prev_weight = prev_weight.checked_div(self.config.window_duration as u128)
+        let prev_weight = prev_weight
+            .checked_div(self.config.window_duration as u128)
             .ok_or(ErrorCode::InvalidArgument)?;
-        
-        let weighted_prev_qty = self.prev_qty.checked_mul(prev_weight)
+
+        let weighted_prev_qty = self
+            .prev_qty
+            .checked_mul(prev_weight)
             .ok_or(ErrorCode::MathOverflow)?
             .checked_div(self.config.window_duration as u128)
             .ok_or(ErrorCode::InvalidArgument)?;
-        let total_outflow = weighted_prev_qty.checked_add(self.cur_qty)
+        let total_outflow = weighted_prev_qty
+            .checked_add(self.cur_qty)
             .ok_or(ErrorCode::MathOverflow)?;
         Ok(total_outflow)
     }

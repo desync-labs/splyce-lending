@@ -1,13 +1,13 @@
-use anchor_lang::prelude::*;
-use crate::state::*;
 use crate::error::ErrorCode;
+use crate::state::*;
+use anchor_lang::prelude::*;
 
 /// Lending market context
 #[derive(Accounts)]
 pub struct LendingMarketSet<'info> {
     #[account(mut,
         seeds=[
-            &signer.key.to_bytes().as_ref()        
+            &signer.key.to_bytes().as_ref()
         ],
         bump)]
     pub lending_market: Account<'info, LendingMarket>,
@@ -26,10 +26,16 @@ pub fn handle_set_lending_market_owner_and_config(
     let lending_market = &mut ctx.accounts.lending_market;
     let signer = &mut ctx.accounts.signer;
 
-    require!(&signer.key() == &lending_market.owner, ErrorCode::Unauthorized);
+    require!(
+        &signer.key() == &lending_market.owner,
+        ErrorCode::Unauthorized
+    );
 
     lending_market.owner = new_owner;
-    require!(rate_limiter_config.window_duration != 0, ErrorCode::InvalidArgument);
+    require!(
+        rate_limiter_config.window_duration != 0,
+        ErrorCode::InvalidArgument
+    );
     //rate_limiter.max_outflow = 0 means no more outflow of liquidity
     lending_market.rate_limiter = RateLimiter::new(rate_limiter_config, Clock::get()?.slot);
     lending_market.whitelisted_liquidator = whitelisted_liquidator;
