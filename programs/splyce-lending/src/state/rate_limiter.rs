@@ -105,33 +105,34 @@ impl RateLimiter {
             msg!("Window duration cannot be 0");
             return Err(ErrorCode::InvalidArgument.into());
         }
+        // Convert window_duration to u128 once
+        let window_duration_u128 = self.config.window_duration as u128;
+    
         // Calculate how many slots have elapsed since the window started
         let elapsed_slots = cur_slot
             .checked_sub(self.window_start)
             .ok_or(ErrorCode::MathOverflow)? as u128;
+    
         // If more than one window duration has passed, prev_qty does not contribute
-        if elapsed_slots >= self.config.window_duration {
+        if elapsed_slots >= window_duration_u128 {
             return Ok(self.cur_qty);
         }
+    
         // Calculate the weight for prev_qty
-        let prev_weight = if elapsed_slots < self.config.window_duration {
-            // Linear decay of weight over the window duration
-            (self.config.window_duration - elapsed_slots) as u128
-        } else {
-            // No overlap with previous window
-            0
-        };
-        // Weighted sum of prev_qty and cur_qty
-        let prev_weight = prev_weight
-            .checked_div(self.config.window_duration as u128)
-            .ok_or(ErrorCode::InvalidArgument)?;
-
+        let prev_weight = window_duration_u128
+            .checked_sub(elapsed_slots)
+            .ok_or(ErrorCode::MathOverflow)?;
+    
+        // Compute the weighted previous quantity
+        // The weight is a ratio between 0 and 1, scaled up to avoid floating point numbers
+        // For integer arithmetic, we represent the weight as a fraction
         let weighted_prev_qty = self
             .prev_qty
             .checked_mul(prev_weight)
             .ok_or(ErrorCode::MathOverflow)?
-            .checked_div(self.config.window_duration as u128)
+            .checked_div(window_duration_u128)
             .ok_or(ErrorCode::InvalidArgument)?;
+    
         let total_outflow = weighted_prev_qty
             .checked_add(self.cur_qty)
             .ok_or(ErrorCode::MathOverflow)?;
