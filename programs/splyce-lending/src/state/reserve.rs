@@ -53,6 +53,8 @@ pub struct Reserve {
     pub rate_limiter: RateLimiter,
     /// Attributed borrows in USD
     pub attributed_borrow_value: u128,
+    /// Key for creating PDA
+    pub key: u64,
 }
 // 
 // TODO, calculate space and define it here
@@ -78,6 +80,7 @@ impl Reserve {
         self.config = params.config;
         self.rate_limiter = RateLimiter::new(params.rate_limiter_config, params.current_slot);
         self.attributed_borrow_value = 0u128;
+        self.key = params.key;
     }
 
     /// get borrow weight. Guaranteed to be greater than 1
@@ -566,6 +569,8 @@ pub struct InitReserveParams {
     pub config: ReserveConfig,
     /// rate limiter config
     pub rate_limiter_config: RateLimiterConfig,
+    /// key for creating PDA
+    pub key: u64,
 }
 
 /// Calculate borrow result
@@ -623,9 +628,10 @@ pub struct ReserveLiquidity {
     /// Reserve liquidity supply address
     pub supply_pubkey: Pubkey,
     /// Reserve liquidity pyth oracle account
-    pub pyth_oracle_pubkey: Pubkey,
+    // pub pyth_oracle_pubkey: Pubkey,
+    pub pyth_oracle_feed_id: [u8; 32]
     /// Reserve liquidity switchboard oracle account
-    pub switchboard_oracle_pubkey: Pubkey,
+    // pub switchboard_oracle_pubkey: Pubkey, 2024-09-19 comment out for now, add back in later if needed
     /// Reserve liquidity available
     pub available_amount: u64,
     /// Reserve liquidity borrowed
@@ -654,8 +660,9 @@ impl ReserveLiquidity {
             mint_pubkey: params.mint_pubkey,
             mint_decimals: params.mint_decimals,
             supply_pubkey: params.supply_pubkey,
-            pyth_oracle_pubkey: params.pyth_oracle_pubkey,
-            switchboard_oracle_pubkey: params.switchboard_oracle_pubkey,
+            // pyth_oracle_pubkey: params.pyth_oracle_pubkey,
+            pyth_oracle_feed_id: params.pyth_oracle_feed_id,
+            // switchboard_oracle_pubkey: params.switchboard_oracle_pubkey,  2024-09-19 comment out for now, add back in later if needed
             available_amount: 0,
             borrowed_amount_wads: 0u128,
             cumulative_borrow_rate_wads: 0u128,
@@ -852,9 +859,10 @@ pub struct NewReserveLiquidityParams {
     /// Reserve liquidity supply address
     pub supply_pubkey: Pubkey,
     /// Reserve liquidity pyth oracle account
-    pub pyth_oracle_pubkey: Pubkey,
+    // pub pyth_oracle_pubkey: Pubkey,
+    pub pyth_oracle_feed_id: [u8; 32],
     /// Reserve liquidity switchboard oracle account
-    pub switchboard_oracle_pubkey: Pubkey,
+    // pub switchboard_oracle_pubkey: Pubkey,
     /// Reserve liquidity market price in quote currency
     pub market_price: u128,
     /// Smoothed reserve liquidity market price in quote currency
