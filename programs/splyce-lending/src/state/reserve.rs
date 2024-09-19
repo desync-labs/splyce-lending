@@ -1,6 +1,8 @@
 use super::*;
 use anchor_lang::prelude::*;
 //TODO change error to Anchor error
+use crate::error::ErrorCode;
+
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use solana_program::{
@@ -92,10 +94,9 @@ impl Reserve {
         price_weight_bps
     }
 
-
     /// get loan to value ratio as a Rate
     pub fn loan_to_value_ratio(&self) -> u128 {
-        self.config.loan_to_value_ratio as u128
+        self.config.loan_to_value_ratio as u128 * PERCENT_SCALER as u128
     }
 
     /// Upper bound price for reserve mint
@@ -133,22 +134,21 @@ impl Reserve {
         quote_amount: u128,
     ) -> Result<u128> {
         let decimals = (10u128).checked_pow(self.liquidity.mint_decimals as u32)
-            .ok_or(LendingError::MathOverflow)?;
-
+            .ok_or(ErrorCode::MathOverflow)?;
         let upper_bound = self.price_upper_bound();
         quote_amount.checked_mul(decimals)
-            .ok_or(LendingError::MathOverflow)?
+            .ok_or(ErrorCode::MathOverflow)?
             .checked_div(upper_bound)
-            .ok_or(LendingError::MathOverflow)
+            .ok_or(ErrorCode::MathOverflow)
     }
 
     /// find current market value of tokens
     pub fn market_value(&self, liquidity_amount: u128) -> Result<u128> {
         self.liquidity.market_price.checked_mul(liquidity_amount)
-            .ok_or(LendingError::MathOverflow)?
+            .ok_or(ErrorCode::MathOverflow)?
             .checked_div((10u128).checked_pow(self.liquidity.mint_decimals as u32)
-            .ok_or(LendingError::MathOverflow)?)
-            .ok_or(LendingError::MathOverflow)
+            .ok_or(ErrorCode::MathOverflow)?)
+            .ok_or(ErrorCode::MathOverflow)
     }
 
     /// find the current upper bound market value of tokens.
@@ -159,11 +159,11 @@ impl Reserve {
     ) -> Result<u128> {
         self.price_upper_bound()
             .checked_mul(liquidity_amount)
-            .ok_or(LendingError::MathOverflow)?
+            .ok_or(ErrorCode::MathOverflow)?
             .checked_div((10u128)
                 .checked_pow(self.liquidity.mint_decimals as u32)
-                .ok_or(LendingError::MathOverflow)?)
-            .ok_or(LendingError::MathOverflow)
+                .ok_or(ErrorCode::MathOverflow)?)
+            .ok_or(ErrorCode::MathOverflow)
     }
 
     /// find the current lower bound market value of tokens.
@@ -174,11 +174,11 @@ impl Reserve {
     ) -> Result<u128> {
         self.price_lower_bound()
             .checked_mul(liquidity_amount)
-            .ok_or(LendingError::MathOverflow)?
+            .ok_or(ErrorCode::MathOverflow)?
             .checked_div((10u128)
                 .checked_pow(self.liquidity.mint_decimals as u32)
-                .ok_or(LendingError::MathOverflow)?)
-            .ok_or(LendingError::MathOverflow)
+                .ok_or(ErrorCode::MathOverflow)?)
+            .ok_or(ErrorCode::MathOverflow)
     }
 
     /// Record deposited liquidity and return amount of collateral tokens to mint
@@ -206,58 +206,58 @@ impl Reserve {
     }
 
     /// Calculate the current borrow rate
-    pub fn current_borrow_rate(&self) -> Result<u128, LendingError> {
+    pub fn current_borrow_rate(&self) -> Result<u128> {
         let utilization_rate = self.liquidity.utilization_rate()?;
-        let optimal_utilization_rate = self.config.optimal_utilization_rate as u128;
-        let max_utilization_rate = self.config.max_utilization_rate as u128;
+        let optimal_utilization_rate = self.config.optimal_utilization_rate as u128 * PERCENT_SCALER as u128;
+        let max_utilization_rate = self.config.max_utilization_rate as u128 * PERCENT_SCALER as u128;
         
         if utilization_rate <= optimal_utilization_rate {
-            let min_rate = self.config.min_borrow_rate as u128;
+            let min_rate = self.config.min_borrow_rate as u128 *  PERCENT_SCALER as u128;
     
             if optimal_utilization_rate == 0 {
                 return Ok(min_rate);
             }
     
             let normalized_rate = utilization_rate.checked_div(optimal_utilization_rate)
-                .ok_or(LendingError::MathOverflow)?;
+                .ok_or(ErrorCode::MathOverflow)?;
             let rate_range = self.config
                 .optimal_borrow_rate
                 .checked_sub(self.config.min_borrow_rate)
-                .ok_or(LendingError::MathOverflow)? as u128;
+                .ok_or(ErrorCode::MathOverflow)? as u128 * PERCENT_SCALER as u128;
     
             normalized_rate.checked_mul(rate_range)
                 .and_then(|r| r.checked_add(min_rate))
-                .ok_or(LendingError::MathOverflow)
+                .ok_or(ErrorCode::MathOverflow)
         } else if utilization_rate <= max_utilization_rate {
             let weight = utilization_rate.checked_sub(optimal_utilization_rate)
-                .ok_or(LendingError::MathOverflow)?
+                .ok_or(ErrorCode::MathOverflow)?
                 .checked_div(max_utilization_rate.checked_sub(optimal_utilization_rate)
-                .ok_or(LendingError::MathOverflow)?)
-                .ok_or(LendingError::MathOverflow)?;
+                .ok_or(ErrorCode::MathOverflow)?)
+                .ok_or(ErrorCode::MathOverflow)?;
     
-            let optimal_borrow_rate = self.config.optimal_borrow_rate as u128;
-            let max_borrow_rate = self.config.max_borrow_rate as u128;
+            let optimal_borrow_rate = self.config.optimal_borrow_rate as u128 * PERCENT_SCALER as u128;
+            let max_borrow_rate = self.config.max_borrow_rate as u128 * PERCENT_SCALER as u128;
             let rate_range = max_borrow_rate.checked_sub(optimal_borrow_rate)
-                .ok_or(LendingError::MathOverflow)?;
+                .ok_or(ErrorCode::MathOverflow)?;
     
             weight.checked_mul(rate_range)
                 .and_then(|r| r.checked_add(optimal_borrow_rate))
-                .ok_or(LendingError::MathOverflow)
+                .ok_or(ErrorCode::MathOverflow)
         } else {
             let weight = utilization_rate.checked_sub(max_utilization_rate)
-                .ok_or(LendingError::MathOverflow)?
+                .ok_or(ErrorCode::MathOverflow)?
                 .checked_div(100u128.checked_sub(self.config.max_utilization_rate as u128)
-                .ok_or(LendingError::MathOverflow)?)
-                .ok_or(LendingError::MathOverflow)?;
+                .ok_or(ErrorCode::MathOverflow)?)
+                .ok_or(ErrorCode::MathOverflow)?;
     
-            let max_borrow_rate = self.config.max_borrow_rate as u128;
-            let super_max_borrow_rate = self.config.super_max_borrow_rate;
+            let max_borrow_rate = self.config.max_borrow_rate as u128 * PERCENT_SCALER as u128;
+            let super_max_borrow_rate = self.config.super_max_borrow_rate * PERCENT_SCALER as u128;
             let rate_range = super_max_borrow_rate.checked_sub(max_borrow_rate)
-                .ok_or(LendingError::MathOverflow)?;
+                .ok_or(ErrorCode::MathOverflow)?;
     
             weight.checked_mul(rate_range)
                 .and_then(|r| r.checked_add(max_borrow_rate))
-                .ok_or(LendingError::MathOverflow)
+                .ok_or(ErrorCode::MathOverflow)
         }
     }
 
@@ -272,7 +272,7 @@ impl Reserve {
         let slots_elapsed = self.last_update.slots_elapsed(current_slot)?;
         if slots_elapsed > 0 {
             let current_borrow_rate = self.current_borrow_rate()?;
-            let take_rate = self.config.protocol_take_rate as u128;
+            let take_rate = self.config.protocol_take_rate as u128 * PERCENT_SCALER as u128;
             self.liquidity
                 .compound_interest(current_borrow_rate, slots_elapsed, take_rate)?;
         }
@@ -288,7 +288,7 @@ impl Reserve {
     ) -> Result<CalculateBorrowResult> {
         let decimals = 10u64
             .checked_pow(self.liquidity.mint_decimals as u32)
-            .ok_or(LendingError::MathOverflow)? as u128;
+            .ok_or(ErrorCode::MathOverflow)? as u128;
         
         if amount_to_borrow == u64::MAX {
             let borrow_amount = max_borrow_value.checked_mul(decimals)
@@ -296,7 +296,7 @@ impl Reserve {
                 .and_then(|v| v.checked_div(self.borrow_weight()))
                 .map(|v| v.min(remaining_reserve_borrow))
                 .map(|v| v.min(self.liquidity.available_amount as u128))
-                .ok_or(LendingError::MathOverflow)?;
+                .ok_or(ErrorCode::MathOverflow)?;
             
             let (borrow_fee, host_fee) = self
                 .config
@@ -304,7 +304,7 @@ impl Reserve {
                 .calculate_borrow_fees(borrow_amount, FeeCalculation::Inclusive)?;
             
             let receive_amount = borrow_amount.checked_sub(borrow_fee)
-                .ok_or(LendingError::MathOverflow)?;
+                .ok_or(ErrorCode::MathOverflow)?;
             
             Ok(CalculateBorrowResult {
                 borrow_amount,
@@ -322,15 +322,15 @@ impl Reserve {
                 .calculate_borrow_fees(borrow_amount, FeeCalculation::Exclusive)?;
     
             let borrow_amount = borrow_amount.checked_add(borrow_fee)
-                .ok_or(LendingError::MathOverflow)?;
+                .ok_or(ErrorCode::MathOverflow)?;
             
             let borrow_value = self.market_value_upper_bound(borrow_amount)?
                 .checked_mul(self.borrow_weight())
-                .ok_or(LendingError::MathOverflow)?;
+                .ok_or(ErrorCode::MathOverflow)?;
             
             if borrow_value > max_borrow_value {
                 msg!("Borrow value cannot exceed maximum borrow value");
-                return Err(LendingError::BorrowTooLarge);
+                return Err(ErrorCode::BorrowTooLarge);
             }
     
             Ok(CalculateBorrowResult {
@@ -373,34 +373,34 @@ impl Reserve {
             }
     
             msg!("Obligation is healthy so a liquidation bonus can't be calculated");
-            return Err(LendingError::ObligationHealthy);
+            return Err(ErrorCode::ObligationHealthy);
         }
     
-        let liquidation_bonus = self.config.liquidation_bonus as u128;
-        let max_liquidation_bonus = self.config.max_liquidation_bonus as u128;
-        let protocol_liquidation_fee = self.config.protocol_liquidation_fee as u128;
+        let liquidation_bonus = self.config.liquidation_bonus as u128 * PERCENT_SCALER as u128;
+        let max_liquidation_bonus = self.config.max_liquidation_bonus as u128 * PERCENT_SCALER as u128;
+        let protocol_liquidation_fee = self.config.protocol_liquidation_fee as u128 * PERCENT_SCALER as u128;
     
         if obligation.unhealthy_borrow_value == obligation.super_unhealthy_borrow_value {
             return Ok(Bonus {
                 total_bonus: liquidation_bonus.checked_add(protocol_liquidation_fee)
-                    .map(|b| b.min(MAX_BONUS_PCT as u128))
-                    .ok_or(LendingError::MathOverflow)?,
+                    .map(|b| b.min(MAX_BONUS_PCT as u128 * PERCENT_SCALER as u128))
+                    .ok_or(ErrorCode::MathOverflow)?,
                 protocol_liquidation_fee,
             });
         }
     
         let weight = (obligation.borrowed_value.checked_sub(obligation.unhealthy_borrow_value)
-            .ok_or(LendingError::MathOverflow)?)
+            .ok_or(ErrorCode::MathOverflow)?)
             .checked_div(obligation.super_unhealthy_borrow_value.checked_sub(obligation.unhealthy_borrow_value)
-            .ok_or(LendingError::MathOverflow)?)
+            .ok_or(ErrorCode::MathOverflow)?)
             .unwrap_or(1);
     
         let bonus = liquidation_bonus.checked_add(weight.checked_mul(max_liquidation_bonus.checked_sub(liquidation_bonus)
-            .ok_or(LendingError::MathOverflow)?)
-            .ok_or(LendingError::MathOverflow)?)
+            .ok_or(ErrorCode::MathOverflow)?)
+            .ok_or(ErrorCode::MathOverflow)?)
             .and_then(|b| b.checked_add(protocol_liquidation_fee))
             .map(|b| b.min(MAX_BONUS_PCT as u128))
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
     
         Ok(Bonus {
             total_bonus: bonus,
@@ -417,13 +417,13 @@ impl Reserve {
         collateral: &ObligationCollateral,
         bonus: &Bonus,
     ) -> Result<CalculateLiquidationResult> {
-        if bonus.total_bonus > MAX_BONUS_PCT as u128 {
+        if bonus.total_bonus > MAX_BONUS_PCT as u128 * PERCENT_SCALER as u128 {
             msg!("Bonus rate cannot exceed maximum bonus rate");
-            return Err(LendingError::InvalidAmount);
+            return Err(ErrorCode::InvalidAmount);
         }
     
         let bonus_rate = bonus.total_bonus.checked_add(1)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
     
         let max_amount = if amount_to_liquidate == u64::MAX {
             liquidity.borrowed_amount_wads
@@ -437,14 +437,14 @@ impl Reserve {
     
         if liquidity.market_value <= 1 {
             let liquidation_value = liquidity.market_value.checked_mul(bonus_rate)
-                .ok_or(LendingError::MathOverflow)?;
+                .ok_or(ErrorCode::MathOverflow)?;
             
             match liquidation_value.cmp(&collateral.market_value) {
                 Ordering::Greater => {
                     let repay_pct = collateral.market_value.checked_div(liquidation_value)
-                        .ok_or(LendingError::MathOverflow)?;
+                        .ok_or(ErrorCode::MathOverflow)?;
                     settle_amount = liquidity.borrowed_amount_wads.checked_mul(repay_pct)
-                        .ok_or(LendingError::MathOverflow)?;
+                        .ok_or(ErrorCode::MathOverflow)?;
                     repay_amount = settle_amount;
                     withdraw_amount = collateral.deposited_amount;
                 }
@@ -455,11 +455,11 @@ impl Reserve {
                 }
                 Ordering::Less => {
                     let withdraw_pct = liquidation_value.checked_div(collateral.market_value)
-                        .ok_or(LendingError::MathOverflow)?;
+                        .ok_or(ErrorCode::MathOverflow)?;
                     settle_amount = liquidity.borrowed_amount_wads;
                     repay_amount = settle_amount;
                     withdraw_amount = collateral.deposited_amount.checked_mul(withdraw_pct)
-                        .ok_or(LendingError::MathOverflow)?;
+                        .ok_or(ErrorCode::MathOverflow)?;
                 }
             }
         } else {
@@ -468,19 +468,19 @@ impl Reserve {
                 .max_liquidation_amount(liquidity)?
                 .min(max_amount);
             let liquidation_pct = liquidation_amount.checked_div(liquidity.borrowed_amount_wads)
-                .ok_or(LendingError::MathOverflow)?;
+                .ok_or(ErrorCode::MathOverflow)?;
             let liquidation_value = liquidity
                 .market_value
                 .checked_mul(liquidation_pct)?
                 .checked_mul(bonus_rate)
-                .ok_or(LendingError::MathOverflow)?;
+                .ok_or(ErrorCode::MathOverflow)?;
     
             match liquidation_value.cmp(&collateral.market_value) {
                 Ordering::Greater => {
                     let repay_pct = collateral.market_value.checked_div(liquidation_value)
-                        .ok_or(LendingError::MathOverflow)?;
+                        .ok_or(ErrorCode::MathOverflow)?;
                     settle_amount = liquidation_amount.checked_mul(repay_pct)
-                        .ok_or(LendingError::MathOverflow)?;
+                        .ok_or(ErrorCode::MathOverflow)?;
                     repay_amount = settle_amount;
                     withdraw_amount = collateral.deposited_amount;
                 }
@@ -491,11 +491,11 @@ impl Reserve {
                 }
                 Ordering::Less => {
                     let withdraw_pct = liquidation_value.checked_div(collateral.market_value)
-                        .ok_or(LendingError::MathOverflow)?;
+                        .ok_or(ErrorCode::MathOverflow)?;
                     settle_amount = liquidation_amount;
                     repay_amount = settle_amount;
                     withdraw_amount = collateral.deposited_amount.checked_mul(withdraw_pct)
-                        .ok_or(LendingError::MathOverflow)?;
+                        .ok_or(ErrorCode::MathOverflow)?;
                 }
             }
         }
@@ -518,20 +518,20 @@ impl Reserve {
     ) -> Result<u64> {
         if bonus.total_bonus > MAX_BONUS_PCT as u128 {
             msg!("Bonus rate cannot exceed maximum bonus rate");
-            return Err(LendingError::InvalidAmount);
+            return Err(ErrorCode::InvalidAmount);
         }
     
         let amount_liquidated_wads = amount_liquidated as u128;
         let nonbonus_amount = amount_liquidated_wads.checked_div(
-            bonus.total_bonus.checked_add(1).ok_or(LendingError::MathOverflow)?
-        ).ok_or(LendingError::MathOverflow)?;
+            bonus.total_bonus.checked_add(1).ok_or(ErrorCode::MathOverflow)?
+        ).ok_or(ErrorCode::MathOverflow)?;
     
         Ok(std::cmp::max(
             nonbonus_amount
                 .checked_mul(bonus.protocol_liquidation_fee)
-                .ok_or(LendingError::MathOverflow)?
+                .ok_or(ErrorCode::MathOverflow)?
                 .checked_div(1u128) // Since the division by Decimal::one() is now unnecessary, this handles the scaling
-                .ok_or(LendingError::MathOverflow)? as u64,
+                .ok_or(ErrorCode::MathOverflow)? as u64,
             1,
         ))
     }
@@ -660,9 +660,9 @@ impl ReserveLiquidity {
     pub fn total_supply(&self) -> Result<u128> {
         self.available_amount
             .checked_add(self.borrowed_amount_wads)
-            .ok_or(LendingError::MathOverflow)?
+            .ok_or(ErrorCode::MathOverflow)?
             .checked_sub(self.accumulated_protocol_fees_wads)
-            .ok_or(LendingError::MathOverflow)
+            .ok_or(ErrorCode::MathOverflow)
     }
 
     /// Add liquidity to available amount
@@ -670,7 +670,7 @@ impl ReserveLiquidity {
         self.available_amount = self
             .available_amount
             .checked_add(liquidity_amount)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
         Ok(())
     }
 
@@ -678,45 +678,45 @@ impl ReserveLiquidity {
     pub fn withdraw(&mut self, liquidity_amount: u64) -> Result<()> {
         if liquidity_amount > self.available_amount {
             msg!("Withdraw amount cannot exceed available amount");
-            return Err(LendingError::InsufficientLiquidity.into());
+            return Err(ErrorCode::InsufficientLiquidity.into());
         }
         self.available_amount = self
             .available_amount
             .checked_sub(liquidity_amount)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
         Ok(())
     }
 
     /// Subtract borrow amount from available liquidity and add to borrows
-    pub fn borrow(&mut self, borrow_amount: u128) -> Result<(), LendingError> {
+    pub fn borrow(&mut self, borrow_amount: u128) -> Result<(), ErrorCode> {
         // Ensure the borrow amount does not exceed the available liquidity
         if borrow_amount > self.available_amount as u128 {
             msg!("Borrow amount cannot exceed available amount");
-            return Err(LendingError::InsufficientLiquidity.into());
+            return Err(ErrorCode::InsufficientLiquidity.into());
         }
     
         // Update available liquidity by subtracting the borrow amount
         self.available_amount = self
             .available_amount
             .checked_sub(borrow_amount as u64)  // Cast to u64 to match available_amount type
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
     
         // Add the borrowed amount to the total borrowed amount
         self.borrowed_amount_wads = self
             .borrowed_amount_wads
             .checked_add(borrow_amount)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
     
         Ok(())
     }
 
     /// Add repay amount to available liquidity and subtract settle amount from total borrows
-    pub fn repay(&mut self, repay_amount: u64, settle_amount: u128) -> Result<(), LendingError> {
+    pub fn repay(&mut self, repay_amount: u64, settle_amount: u128) -> Result<(), ErrorCode> {
         // Add the repay amount to the available liquidity
         self.available_amount = self
             .available_amount
             .checked_add(repay_amount)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
 
         // Ensure that the settle amount doesn't exceed the borrowed amount
         let safe_settle_amount = settle_amount.min(self.borrowed_amount_wads);
@@ -725,42 +725,42 @@ impl ReserveLiquidity {
         self.borrowed_amount_wads = self
             .borrowed_amount_wads
             .checked_sub(safe_settle_amount)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
 
         Ok(())
     }
 
     /// Forgive bad debt. This essentially socializes the loss across all ctoken holders of
     /// this reserve.
-    pub fn forgive_debt(&mut self, liquidity_amount: u128) -> Result<(), LendingError> {
+    pub fn forgive_debt(&mut self, liquidity_amount: u128) -> Result<(), ErrorCode> {
         // Subtract the liquidity amount from the borrowed amount
         self.borrowed_amount_wads = self
             .borrowed_amount_wads
             .checked_sub(liquidity_amount)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
 
         Ok(())
     }
 
     /// Subtract settle amount from accumulated_protocol_fees_wads and withdraw_amount from available liquidity
-    pub fn redeem_fees(&mut self, withdraw_amount: u64) -> Result<(), LendingError> {
+    pub fn redeem_fees(&mut self, withdraw_amount: u64) -> Result<(), ErrorCode> {
         // Subtract the withdraw amount from the available liquidity
         self.available_amount = self
             .available_amount
             .checked_sub(withdraw_amount)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
 
         // Subtract the withdraw amount from the accumulated protocol fees
         self.accumulated_protocol_fees_wads = self
             .accumulated_protocol_fees_wads
             .checked_sub(withdraw_amount as u128)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
 
         Ok(())
     }
 
     /// Calculate the liquidity utilization rate of the reserve
-    pub fn utilization_rate(&self) -> Result<u128, LendingError> {
+    pub fn utilization_rate(&self) -> Result<u128, ErrorCode> {
         let total_supply = self.total_supply()?;
         if total_supply == 0 || self.borrowed_amount_wads == 0 {
             return Ok(0);
@@ -770,15 +770,15 @@ impl ReserveLiquidity {
         let denominator = self
             .borrowed_amount_wads
             .checked_add(self.available_amount as u128)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
 
         // Divide borrowed amount by the total supply and calculate the utilization rate
         let utilization_rate = self
             .borrowed_amount_wads
             .checked_mul(100) // Assuming you want to calculate it as a percentage
-            .ok_or(LendingError::MathOverflow)?
+            .ok_or(ErrorCode::MathOverflow)?
             .checked_div(denominator)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
 
         Ok(utilization_rate)
     }
@@ -789,45 +789,45 @@ impl ReserveLiquidity {
         current_borrow_rate: u128,
         slots_elapsed: u64,
         take_rate: u128,
-    ) -> Result<(), LendingError> {
+    ) -> Result<(), ErrorCode> {
         // Calculate the slot interest rate
         let slot_interest_rate = current_borrow_rate
             .checked_div(SLOTS_PER_YEAR)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
 
         // Compound the interest over the number of slots elapsed
         let compounded_interest_rate = 1u128
             .checked_add(slot_interest_rate)
-            .ok_or(LendingError::MathOverflow)?
+            .ok_or(ErrorCode::MathOverflow)?
             .checked_pow(slots_elapsed as u32)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
 
         // Update the cumulative borrow rate with compounded interest
         self.cumulative_borrow_rate_wads = self
             .cumulative_borrow_rate_wads
             .checked_mul(compounded_interest_rate)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
 
         // Calculate the net new debt
         let net_new_debt = self
             .borrowed_amount_wads
             .checked_mul(compounded_interest_rate)
-            .ok_or(LendingError::MathOverflow)?
+            .ok_or(ErrorCode::MathOverflow)?
             .checked_sub(self.borrowed_amount_wads)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
 
         // Update accumulated protocol fees with the new debt
         self.accumulated_protocol_fees_wads = net_new_debt
             .checked_mul(take_rate)
-            .ok_or(LendingError::MathOverflow)?
+            .ok_or(ErrorCode::MathOverflow)?
             .checked_add(self.accumulated_protocol_fees_wads)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
 
         // Update the borrowed amount with the net new debt
         self.borrowed_amount_wads = self
             .borrowed_amount_wads
             .checked_add(net_new_debt)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
 
         Ok(())
     }
@@ -877,7 +877,7 @@ impl ReserveCollateral {
         self.mint_total_supply = self
             .mint_total_supply
             .checked_add(collateral_amount)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
         Ok(())
     }
 
@@ -886,7 +886,7 @@ impl ReserveCollateral {
         self.mint_total_supply = self
             .mint_total_supply
             .checked_sub(collateral_amount)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
         Ok(())
     }
 
@@ -901,7 +901,7 @@ impl ReserveCollateral {
             let mint_total_supply = self.mint_total_supply as u128;
             mint_total_supply
                 .checked_div(total_liquidity)
-                .ok_or(LendingError::MathOverflow)?
+                .ok_or(ErrorCode::MathOverflow)?
         };
 
         Ok(CollateralExchangeRate(rate))
@@ -933,7 +933,7 @@ impl CollateralExchangeRate {
     ) -> Result<u64, ProgramError> {
         collateral_amount
             .checked_div(self.0)
-            .ok_or(LendingError::MathOverflow)?
+            .ok_or(ErrorCode::MathOverflow)?
             .try_into()
             .map_err(|_| ProgramError::InvalidArgument)
     }
@@ -950,7 +950,7 @@ impl CollateralExchangeRate {
     ) -> Result<u64, ProgramError> {
         liquidity_amount
             .checked_mul(self.0)
-            .ok_or(LendingError::MathOverflow)?
+            .ok_or(ErrorCode::MathOverflow)?
             .try_into()
             .map_err(|_| ProgramError::InvalidArgument)
     }
@@ -1022,65 +1022,65 @@ pub struct ReserveConfig {
 pub fn validate_reserve_config(config: ReserveConfig) -> Result<()> {
     if config.optimal_utilization_rate > 100 {
         msg!("Optimal utilization rate must be in range [0, 100]");
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
     if config.max_utilization_rate < config.optimal_utilization_rate
         || config.max_utilization_rate > 100
     {
         msg!("Unhealthy utilization rate must be in range [optimal_utilization_rate, 100]");
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
     if config.loan_to_value_ratio >= 100 {
         msg!("Loan to value ratio must be in range [0, 100)");
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
     if config.liquidation_bonus > 100 {
         msg!("Liquidation bonus must be in range [0, 100]");
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
     if config.max_liquidation_bonus < config.liquidation_bonus || config.max_liquidation_bonus > 100
     {
         msg!("Max liquidation bonus must be in range [liquidation_bonus, 100]");
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
     if config.liquidation_threshold < config.loan_to_value_ratio
         || config.liquidation_threshold > 100
     {
         msg!("Liquidation threshold must be in range [LTV, 100]");
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
     if config.max_liquidation_threshold < config.liquidation_threshold
         || config.max_liquidation_threshold > 100
     {
         msg!("Max liquidation threshold must be in range [liquidation threshold, 100]");
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
     if config.optimal_borrow_rate < config.min_borrow_rate {
         msg!("Optimal borrow rate must be >= min borrow rate");
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
     if config.optimal_borrow_rate > config.max_borrow_rate {
         msg!("Optimal borrow rate must be <= max borrow rate");
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
     if config.super_max_borrow_rate < config.max_borrow_rate as u64 {
         msg!("Super max borrow rate must be >= max borrow rate");
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
     if config.fees.borrow_fee_wad >= WAD {
         msg!("Borrow fee must be in range [0, 1_000_000_000_000_000_000)");
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
     if config.fees.host_fee_percentage > 100 {
         msg!("Host fee percentage must be in range [0, 100]");
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
     if config.protocol_liquidation_fee > MAX_PROTOCOL_LIQUIDATION_FEE_DECA_BPS {
         msg!(
             "Protocol liquidation fee must be in range [0, {}] deca bps",
             MAX_PROTOCOL_LIQUIDATION_FEE_DECA_BPS
         );
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
     if config.max_liquidation_bonus as u64 * 100 + config.protocol_liquidation_fee as u64 * 10
         > MAX_BONUS_PCT as u64 * 100
@@ -1089,18 +1089,18 @@ pub fn validate_reserve_config(config: ReserveConfig) -> Result<()> {
             "Max liquidation bonus + protocol liquidation fee must be in pct range [0, {}]",
             MAX_BONUS_PCT
         );
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
     if config.protocol_take_rate > 100 {
         msg!("Protocol take rate must be in range [0, 100]");
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
 
     if config.reserve_type == ReserveType::Isolated
         && !(config.loan_to_value_ratio == 0 && config.liquidation_threshold == 0)
     {
         msg!("open/close LTV must be 0 for isolated reserves");
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
 
     if config.scaled_price_offset_bps < MIN_SCALED_PRICE_OFFSET_BPS
@@ -1111,12 +1111,12 @@ pub fn validate_reserve_config(config: ReserveConfig) -> Result<()> {
             MIN_SCALED_PRICE_OFFSET_BPS,
             MAX_SCALED_PRICE_OFFSET_BPS
         );
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
 
     if config.attributed_borrow_limit_open > config.attributed_borrow_limit_close {
         msg!("open attributed borrow limit must be <= close attributed borrow limit");
-        return Err(LendingError::InvalidConfig.into());
+        return Err(ErrorCode::InvalidConfig.into());
     }
 
     Ok(())
@@ -1138,7 +1138,7 @@ impl FromStr for ReserveType {
         match input {
             "Regular" => Ok(ReserveType::Regular),
             "Isolated" => Ok(ReserveType::Isolated),
-            _ => Err(LendingError::InvalidConfig.into()),
+            _ => Err(ErrorCode::InvalidConfig.into()),
         }
     }
 }
@@ -1187,7 +1187,7 @@ impl ReserveFees {
 
         let origination_fee = total_fees
             .checked_sub(host_fee)
-            .ok_or(LendingError::MathOverflow)?;
+            .ok_or(ErrorCode::MathOverflow)?;
         Ok((origination_fee, host_fee))
     }
 
@@ -1212,33 +1212,33 @@ impl ReserveFees {
                 // Calculate fee to be added to borrow: fee = amount * rate
                 FeeCalculation::Exclusive => amount
                     .checked_mul(borrow_fee_rate)
-                    .ok_or(LendingError::MathOverflow)?
+                    .ok_or(ErrorCode::MathOverflow)?
                     .checked_div(10u128.pow(18))
-                    .ok_or(LendingError::MathOverflow)?,
+                    .ok_or(ErrorCode::MathOverflow)?,
                 // Calculate fee to be subtracted from borrow: fee = amount * (rate / (rate + 1))
                 FeeCalculation::Inclusive => {
                     let rate = borrow_fee_rate
-                        .checked_div(borrow_fee_rate.checked_add(10u128.pow(18)).ok_or(LendingError::MathOverflow)?)
-                        .ok_or(LendingError::MathOverflow)?;
-                    amount.checked_mul(rate).ok_or(LendingError::MathOverflow)?
+                        .checked_div(borrow_fee_rate.checked_add(10u128.pow(18)).ok_or(ErrorCode::MathOverflow)?)
+                        .ok_or(ErrorCode::MathOverflow)?;
+                    amount.checked_mul(rate).ok_or(ErrorCode::MathOverflow)?
                 }
             };
 
             let borrow_fee_u128 = borrow_fee_amount.max(minimum_fee as u128);
             if borrow_fee_u128 >= amount {
                 msg!("Borrow amount is too small to receive liquidity after fees");
-                return Err(LendingError::BorrowTooSmall.into());
+                return Err(ErrorCode::BorrowTooSmall.into());
             }
 
-            let borrow_fee = borrow_fee_u128.try_into().map_err(|_| LendingError::MathOverflow)?;
+            let borrow_fee = borrow_fee_u128.try_into().map_err(|_| ErrorCode::MathOverflow)?;
             let host_fee = if need_to_assess_host_fee {
                 borrow_fee_u128
                     .checked_mul(host_fee_rate)
-                    .ok_or(LendingError::MathOverflow)?
+                    .ok_or(ErrorCode::MathOverflow)?
                     .checked_div(100)
-                    .ok_or(LendingError::MathOverflow)?
+                    .ok_or(ErrorCode::MathOverflow)?
                     .try_into()
-                    .map_err(|_| LendingError::MathOverflow)?
+                    .map_err(|_| ErrorCode::MathOverflow)?
                     .max(1u64)
             } else {
                 0
