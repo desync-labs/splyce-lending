@@ -35,7 +35,7 @@ pub const MAX_SCALED_PRICE_OFFSET_BPS: i64 = 2000;
 pub const MIN_SCALED_PRICE_OFFSET_BPS: i64 = -2000;
 
 /// Lending market reserve state
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, Default, PartialEq)]
 pub struct Reserve {
     /// Version of the struct
     pub version: u8,
@@ -53,6 +53,11 @@ pub struct Reserve {
     pub rate_limiter: RateLimiter,
     /// Attributed borrows in USD
     pub attributed_borrow_value: u128,
+}
+// 
+// TODO, calculate space and define it here
+impl anchor_lang::Space for Reserve {
+    const INIT_SPACE: usize = 8 + LastUpdate::INIT_SPACE + 32 + ReserveLiquidity::INIT_SPACE + ReserveCollateral::INIT_SPACE + ReserveConfig::INIT_SPACE + RateLimiter::INIT_SPACE + 16;
 }
 
 impl Reserve {
@@ -609,7 +614,7 @@ pub struct Bonus {
 }
 
 /// Reserve liquidity
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct ReserveLiquidity {
     /// Reserve liquidity mint address
     pub mint_pubkey: Pubkey,
@@ -635,6 +640,11 @@ pub struct ReserveLiquidity {
     pub smoothed_market_price: u128,
     /// Extra price obtained from the optional extra oracle
     pub extra_market_price: Option<u128>,
+}
+
+// TODO, calculate space and define it here
+impl anchor_lang::Space for ReserveLiquidity {
+    const INIT_SPACE: usize = 234;
 }
 
 impl ReserveLiquidity {
@@ -852,7 +862,7 @@ pub struct NewReserveLiquidityParams {
 }
 
 /// Reserve collateral
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct ReserveCollateral {
     /// Reserve collateral mint address
     pub mint_pubkey: Pubkey,
@@ -860,6 +870,11 @@ pub struct ReserveCollateral {
     pub mint_total_supply: u64,
     /// Reserve collateral supply address
     pub supply_pubkey: Pubkey,
+}
+
+// TODO, calculate space and define it here
+impl anchor_lang::Space for ReserveCollateral {
+    const INIT_SPACE: usize = 8 + 32 + 8 + 32;
 }
 
 impl ReserveCollateral {
@@ -964,7 +979,7 @@ impl From<CollateralExchangeRate> for Rate {
 }
 
 /// Reserve configuration values
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ReserveConfig {
     /// Optimal utilization rate, as a percentage
     pub optimal_utilization_rate: u8,
@@ -1015,6 +1030,11 @@ pub struct ReserveConfig {
     pub attributed_borrow_limit_open: u64,
     /// Close Attributed Borrow limit in USD
     pub attributed_borrow_limit_close: u64,
+}
+
+// TODO, calculate space and define it here
+impl anchor_lang::Space for ReserveConfig {
+    const INIT_SPACE: usize = 143 + ReserveFees::INIT_SPACE + ReserveType::INIT_SPACE;
 }
 
 /// validates reserve configs
@@ -1122,7 +1142,7 @@ pub fn validate_reserve_config(config: ReserveConfig) -> Result<()> {
     Ok(())
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, FromPrimitive)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default, PartialEq, Eq, FromPrimitive)]
 /// Asset Type of the reserve
 pub enum ReserveType {
     #[default]
@@ -1130,6 +1150,11 @@ pub enum ReserveType {
     Regular = 0,
     /// this asset cannot be used as collateral and can only be borrowed in isolation
     Isolated = 1,
+}
+
+TODO, calculate space and define it here
+impl anchor_lang::Space for ReserveType {
+    const INIT_SPACE: usize = 8 + 1;
 }
 
 impl FromStr for ReserveType {
@@ -1148,7 +1173,7 @@ impl FromStr for ReserveType {
 /// These exist separately from interest accrual fees, and are specifically for the program owner
 /// and frontend host. The fees are paid out as a percentage of liquidity token amounts during
 /// repayments and liquidations.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ReserveFees {
     /// Fee assessed on `BorrowObligationLiquidity`, expressed as a Wad.
     /// Must be between 0 and 10^18, such that 10^18 = 1.  A few examples for
@@ -1162,6 +1187,11 @@ pub struct ReserveFees {
     pub flash_loan_fee_wad: u64,
     /// Amount of fee going to host account, if provided in liquidate and repay
     pub host_fee_percentage: u8,
+}
+
+// TODO, calculate space and define it here
+impl anchor_lang::Space for ReserveFees {
+    const INIT_SPACE: usize = 8 + 8 + 8 + 1;
 }
 
 impl ReserveFees {
