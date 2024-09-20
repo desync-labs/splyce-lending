@@ -25,4 +25,16 @@ pub enum ErrorCode {
 
     #[msg("Insufficient Liquidity")]
     InsufficientLiquidity,
+
+    #[msg("Borrow Too Large")]
+    BorrowTooLarge,
+
+    #[msg("Borrow Too Small")]
+    BorrowTooSmall,
+
+    #[msg("Invalid Amount")]
+    InvalidAmount,
+
+    #[msg("Invalid Config")]
+    InvalidConfig,
 }

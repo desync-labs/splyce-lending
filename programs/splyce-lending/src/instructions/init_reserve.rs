@@ -3,6 +3,8 @@ use crate::utils::token::*;
 use crate::error::ErrorCode;
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Token, Mint, TokenAccount};
+use anchor_spl::associated_token::AssociatedToken; // Import AssociatedToken
+
 use std::mem::size_of;
 
 /// Lending market context
@@ -17,7 +19,6 @@ pub struct ReserveInit<'info> {
             &signer.key.to_bytes().as_ref()
         ],
         bump,
-        owner = lending_market
     )]
     pub reserve: Account<'info, Reserve>,
 
@@ -74,7 +75,7 @@ pub struct ReserveInit<'info> {
 
     pub token_program: Program<'info, Token>,
 
-    pub associated_token_program: Program<'info, TokenAccount>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
 
     pub rent: Sysvar<'info, Rent>,
 
@@ -90,7 +91,7 @@ pub fn handle_init_reserve(
     is_test: bool,
 ) -> Result<()> {
     require!(liquidity_amount > 0, ErrorCode::InvalidArgument);
-    let lending_market = &mut ctx.accounts.lendung_market;
+    let lending_market = &mut ctx.accounts.lending_market;
     let signer = &mut ctx.accounts.signer;
     let token_program = &ctx.accounts.token_program;
     let program_id = &ctx.program_id;
@@ -100,7 +101,7 @@ pub fn handle_init_reserve(
 
 
     let lending_PDA = Pubkey::find_program_address(&[&signer.key.to_bytes().as_ref()], *program_id).0;
-    require!(lending_PDA == lending_market.key, ErrorCode::InvalidArgument);
+    require!(lending_PDA == lending_market.key(), ErrorCode::InvalidArgument);
 
     //for now, is_test should alwasy be set to true
     let (market_price, expo) = (0, 0);
@@ -113,21 +114,22 @@ pub fn handle_init_reserve(
     //need to save feedId as [u8 : 32]. the process of changing hex string to u8 array is done in the client side.
     reserve.init(InitReserveParams {
         current_slot: Clock::get()?.slot,
-        lending_market: *lending_market.key,
+        lending_market: lending_market.key(),
         liquidity: ReserveLiquidity::new(NewReserveLiquidityParams {
-            mint_pubkey: *ctx.accounts.liquidity_mint_account.key,
+            mint_pubkey: ctx.accounts.liquidity_mint_account.key(),
             mint_decimals: ctx.accounts.liquidity_mint_account.decimals,
-            supply_pubkey: *ctx.accounts.liquidity_reserve_account.key,
+            supply_pubkey: ctx.accounts.liquidity_reserve_account.key(),
             pyth_oracle_feed_id: feed_id,
-            market_price: market_price,
-            smoothed_market_price: market_price,
+            market_price: market_price as u128,
+            smoothed_market_price: market_price as u128,
         }),
         collateral: ReserveCollateral::new(NewReserveCollateralParams {
-            mint_pubkey: *ctx.accounts.collateral_mint_account.key,
-            supply_pubkey: *ctx.accounts.collateral_reserve_account.key,
+            mint_pubkey: ctx.accounts.collateral_mint_account.key(),
+            supply_pubkey: ctx.accounts.collateral_reserve_account.key(),
         }),
         config,
         rate_limiter_config: RateLimiterConfig::default(),
+        key,
     });
 
     let collateral_amount = reserve.deposit_liquidity(liquidity_amount)?;

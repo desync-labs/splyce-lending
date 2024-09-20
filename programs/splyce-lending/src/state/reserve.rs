@@ -36,7 +36,8 @@ pub const MAX_SCALED_PRICE_OFFSET_BPS: i64 = 2000;
 pub const MIN_SCALED_PRICE_OFFSET_BPS: i64 = -2000;
 
 /// Lending market reserve state
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, Default, PartialEq)]
+#[account]
+#[derive(Debug, Default, PartialEq)]
 pub struct Reserve {
     /// Version of the struct
     pub version: u8,
@@ -148,7 +149,7 @@ impl Reserve {
         quote_amount.checked_mul(decimals)
             .ok_or(ErrorCode::MathOverflow)?
             .checked_div(upper_bound)
-            .ok_or(ErrorCode::MathOverflow)
+            .ok_or(ErrorCode::MathOverflow.into())
     }
 
     /// find current market value of tokens
@@ -157,7 +158,7 @@ impl Reserve {
             .ok_or(ErrorCode::MathOverflow)?
             .checked_div((10u128).checked_pow(self.liquidity.mint_decimals as u32)
             .ok_or(ErrorCode::MathOverflow)?)
-            .ok_or(ErrorCode::MathOverflow)
+            .ok_or(ErrorCode::MathOverflow.into())
     }
 
     /// find the current upper bound market value of tokens.
@@ -172,7 +173,7 @@ impl Reserve {
             .checked_div((10u128)
                 .checked_pow(self.liquidity.mint_decimals as u32)
                 .ok_or(ErrorCode::MathOverflow)?)
-            .ok_or(ErrorCode::MathOverflow)
+            .ok_or(ErrorCode::MathOverflow.into())
     }
 
     /// find the current lower bound market value of tokens.
@@ -187,7 +188,7 @@ impl Reserve {
             .checked_div((10u128)
                 .checked_pow(self.liquidity.mint_decimals as u32)
                 .ok_or(ErrorCode::MathOverflow)?)
-            .ok_or(ErrorCode::MathOverflow)
+            .ok_or(ErrorCode::MathOverflow.into())
     }
 
     /// Record deposited liquidity and return amount of collateral tokens to mint
@@ -236,7 +237,7 @@ impl Reserve {
     
             normalized_rate.checked_mul(rate_range)
                 .and_then(|r| r.checked_add(min_rate))
-                .ok_or(ErrorCode::MathOverflow)
+                .ok_or(ErrorCode::MathOverflow.into())
         } else if utilization_rate <= max_utilization_rate {
             let weight = utilization_rate.checked_sub(optimal_utilization_rate)
                 .ok_or(ErrorCode::MathOverflow)?
@@ -251,7 +252,7 @@ impl Reserve {
     
             weight.checked_mul(rate_range)
                 .and_then(|r| r.checked_add(optimal_borrow_rate))
-                .ok_or(ErrorCode::MathOverflow)
+                .ok_or(ErrorCode::MathOverflow.into())
         } else {
             let weight = utilization_rate.checked_sub(max_utilization_rate)
                 .ok_or(ErrorCode::MathOverflow)?
@@ -260,13 +261,13 @@ impl Reserve {
                 .ok_or(ErrorCode::MathOverflow)?;
     
             let max_borrow_rate = self.config.max_borrow_rate as u128 * PERCENT_SCALER as u128;
-            let super_max_borrow_rate = self.config.super_max_borrow_rate * PERCENT_SCALER as u128;
-            let rate_range = super_max_borrow_rate.checked_sub(max_borrow_rate)
+            let super_max_borrow_rate = self.config.super_max_borrow_rate as u128 * PERCENT_SCALER as u128;
+            let rate_range = super_max_borrow_rate.checked_sub(max_borrow_rate.try_into().unwrap())
                 .ok_or(ErrorCode::MathOverflow)?;
     
-            weight.checked_mul(rate_range)
+            weight.checked_mul(rate_range.into())
                 .and_then(|r| r.checked_add(max_borrow_rate))
-                .ok_or(ErrorCode::MathOverflow)
+                .ok_or(ErrorCode::MathOverflow.into())
         }
     }
 
@@ -312,12 +313,12 @@ impl Reserve {
                 .fees
                 .calculate_borrow_fees(borrow_amount, FeeCalculation::Inclusive)?;
             
-            let receive_amount = borrow_amount.checked_sub(borrow_fee)
+            let receive_amount = borrow_amount.checked_sub(borrow_fee.into())
                 .ok_or(ErrorCode::MathOverflow)?;
             
             Ok(CalculateBorrowResult {
                 borrow_amount,
-                receive_amount,
+                receive_amount: receive_amount.try_into().unwrap(),
                 borrow_fee,
                 host_fee,
             })
@@ -330,7 +331,7 @@ impl Reserve {
                 .fees
                 .calculate_borrow_fees(borrow_amount, FeeCalculation::Exclusive)?;
     
-            let borrow_amount = borrow_amount.checked_add(borrow_fee)
+            let borrow_amount = borrow_amount.checked_add(borrow_fee.into())
                 .ok_or(ErrorCode::MathOverflow)?;
             
             let borrow_value = self.market_value_upper_bound(borrow_amount)?
@@ -339,7 +340,7 @@ impl Reserve {
             
             if borrow_value > max_borrow_value {
                 msg!("Borrow value cannot exceed maximum borrow value");
-                return Err(ErrorCode::BorrowTooLarge);
+                return Err(ErrorCode::BorrowTooLarge.into());
             }
     
             Ok(CalculateBorrowResult {
@@ -366,7 +367,7 @@ impl Reserve {
         
         Ok(CalculateRepayResult {
             settle_amount,
-            repay_amount,
+            repay_amount: repay_amount.try_into().unwrap(),
         })
     }
 
@@ -531,7 +532,7 @@ impl Reserve {
     ) -> Result<u64> {
         if bonus.total_bonus > MAX_BONUS_PCT as u128 {
             msg!("Bonus rate cannot exceed maximum bonus rate");
-            return Err(ErrorCode::InvalidAmount);
+            return Err(ErrorCode::InvalidAmount.into());
         }
     
         let amount_liquidated_wads = amount_liquidated as u128;
@@ -554,8 +555,8 @@ impl Reserve {
         Ok(min(
             self.liquidity.available_amount,
             self.liquidity
-                .accumulated_protocol_fees_wads
-                .try_floor_u64()?,
+                .accumulated_protocol_fees_wads.try_into().unwrap()
+                // .try_floor_u64()?,
         ))
     }
 }
@@ -679,12 +680,27 @@ impl ReserveLiquidity {
     }
 
     /// Calculate the total reserve supply including active loans
+    // pub fn total_supply(&self) -> Result<u128> {
+    //     self.available_amount
+    //         .checked_add(self.borrowed_amount_wads.try_into().unwrap())
+    //         .ok_or(ErrorCode::MathOverflow)?
+    //         .checked_sub(self.accumulated_protocol_fees_wads.try_into().unwrap())
+    //         .ok_or(ErrorCode::MathOverflow)
+    // }
+
     pub fn total_supply(&self) -> Result<u128> {
-        self.available_amount
-            .checked_add(self.borrowed_amount_wads)
+        let total_borrowed = self.borrowed_amount_wads; // Already u128
+        let available_as_u128 = self.available_amount as u128; // Convert available_amount to u128
+        let accumulated_protocol_fees_as_u128 = self.accumulated_protocol_fees_wads; // Already u128
+    
+        // Now perform the calculations
+        let total_supply = available_as_u128
+            .checked_add(total_borrowed)
             .ok_or(ErrorCode::MathOverflow)?
-            .checked_sub(self.accumulated_protocol_fees_wads)
-            .ok_or(ErrorCode::MathOverflow)
+            .checked_sub(accumulated_protocol_fees_as_u128)
+            .ok_or(ErrorCode::MathOverflow)?;
+    
+        Ok(total_supply)
     }
 
     /// Add liquidity to available amount
@@ -814,7 +830,7 @@ impl ReserveLiquidity {
     ) -> Result<()> {
         // Calculate the slot interest rate
         let slot_interest_rate = current_borrow_rate
-            .checked_div(SLOTS_PER_YEAR)
+            .checked_div(SLOTS_PER_YEAR.into())
             .ok_or(ErrorCode::MathOverflow)?;
 
         // Compound the interest over the number of slots elapsed
@@ -929,10 +945,10 @@ impl ReserveCollateral {
             let mint_total_supply = self.mint_total_supply as u128;
             mint_total_supply
                 .checked_div(total_liquidity)
-                .ok_or(ErrorCode::MathOverflow)?
+                .ok_or(ErrorCode::MathOverflow)?.try_into().unwrap()
         };
 
-        Ok(CollateralExchangeRate(rate))
+        Ok(CollateralExchangeRate(rate.into()))
     }
 }
 
@@ -959,11 +975,11 @@ impl CollateralExchangeRate {
         &self,
         collateral_amount: u128,
     ) -> Result<u64> {
-        collateral_amount
+        Ok(collateral_amount
             .checked_div(self.0)
             .ok_or(ErrorCode::MathOverflow)?
             .try_into()
-            .map_err(|_| ProgramError::InvalidArgument)
+            .map_err(|_| ProgramError::InvalidArgument)?)
     }
 
     /// Convert reserve liquidity to collateral
@@ -976,11 +992,11 @@ impl CollateralExchangeRate {
         &self,
         liquidity_amount: u128,
     ) -> Result<u64> {
-        liquidity_amount
+        Ok(liquidity_amount
             .checked_mul(self.0)
             .ok_or(ErrorCode::MathOverflow)?
             .try_into()
-            .map_err(|_| ProgramError::InvalidArgument)
+            .map_err(|_| ProgramError::InvalidArgument)?)
     }
 }
 
@@ -1184,7 +1200,7 @@ impl FromStr for ReserveType {
         match input {
             "Regular" => Ok(ReserveType::Regular),
             "Isolated" => Ok(ReserveType::Isolated),
-            _ => Err(ErrorCode::InvalidConfig.into()), // Convert ErrorCode to ProgramError
+            _ => Err(ErrorCode::InvalidConfig), // Convert ErrorCode to ProgramError
         }
     }
 }

@@ -6,7 +6,7 @@ use solana_program::slot_history::Slot;
 /// guarantee: at any point, the outflow between [cur_slot - slot.window_duration, cur_slot]
 /// is less than 2x max_outflow.
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq)]
 pub struct RateLimiter {
     /// configuration parameters
     pub config: RateLimiterConfig, // 24 bytes
@@ -29,7 +29,7 @@ impl anchor_lang::Space for RateLimiter {
 }
 
 /// Lending market configuration parameters
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Default, Debug, PartialEq, Eq)]
 // #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RateLimiterConfig {
     /// Rate limiter window size in slots
