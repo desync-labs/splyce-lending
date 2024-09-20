@@ -1038,6 +1038,8 @@ pub struct ReserveConfig {
     pub attributed_borrow_limit_open: u64,
     /// Close Attributed Borrow limit in USD
     pub attributed_borrow_limit_close: u64,
+    /// Solana program that handles the reserve setting. Optional.
+    pub reserve_setter_program_id: Option<Pubkey>,
 }
 
 // TODO, calculate space and define it here

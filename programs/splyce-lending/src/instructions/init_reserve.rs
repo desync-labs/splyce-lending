@@ -76,6 +76,8 @@ pub struct ReserveInit<'info> {
     pub associated_token_program: Program<'info, AssociatedToken>,
 
     pub rent: Sysvar<'info, Rent>,
+
+    pub mock_pyth_feed: Account<'info, MockPythPriceFeed>,
 }
 
 pub fn handle_init_reserve(
@@ -84,6 +86,7 @@ pub fn handle_init_reserve(
     key: u64,
     feed_id: [u8; 32],
     config: ReserveConfig,
+    is_test: bool,
 ) -> Result<()> {
     require!(liquidity_amount > 0, ErrorCode::InvalidArgument);
     let lendung_market = &mut ctx.accounts.lendung_market;
@@ -97,32 +100,34 @@ pub fn handle_init_reserve(
     let lending_PDA = Pubkey::find_program_address(&[&signer.key.to_bytes().as_ref()], *program_id).0;
     require!(lending_PDA == lending_market.key, ErrorCode::InvalidArgument);
 
+    //for now, is_test should alwasy be set to true
+    if is_test {
+        let (market_price, expo) = ctx.accounts.mock_pyth_feed.get_price();
+    } else {
+        //TODO later add logic that fetches the price from the pyth feed on mainnet/testnet
+    }
 
     //need to save feedId as [u8 : 32]. the process of changing hex string to u8 array is done in the client side.
     reserve.init(InitReserveParams {
         current_slot: Clock::get()?.slot,
         lending_market: *lending_market.key,
-
+        liquidity: ReserveLiquidity::new(NewReserveLiquidityParams {
+            mint_pubkey: *ctx.accounts.liquidity_mint_account.key,
+            mint_decimals: ctx.accounts.liquidity_mint_account.decimals,
+            supply_pubkey: *ctx.accounts.liquidity_reserve_account.key,
+            pyth_oracle_feed_id: feed_id,
+            market_price: market_price,
+            smoothed_market_price: market_price,
+        }),
+        collateral: ReserveCollateral::new(NewReserveCollateralParams {
+            mint_pubkey: *ctx.accounts.collateral_mint_account.key,
+            supply_pubkey: *ctx.accounts.collateral_reserve_account.key,
+        }),
+        config,
+        rate_limiter_config: RateLimiterConfig::default(),
     });
 
-    // reserve.init(InitReserveParams {
-    //     current_slot: clock.slot,
-    //     lending_market: *lending_market_info.key,
-    //     liquidity: ReserveLiquidity::new(NewReserveLiquidityParams {
-    //         mint_pubkey: *reserve_liquidity_mint_info.key,
-    //         mint_decimals: reserve_liquidity_mint.decimals,
-    //         supply_pubkey: *reserve_liquidity_supply_info.key,
-    //         pyth_oracle_feed_id: feed_id
-    //         market_price,
-    //         smoothed_market_price: smoothed_market_price.unwrap_or(market_price),
-    //     }),
-    //     collateral: ReserveCollateral::new(NewReserveCollateralParams {
-    //         mint_pubkey: *reserve_collateral_mint_info.key,
-    //         supply_pubkey: *reserve_collateral_supply_info.key,
-    //     }),
-    //     config,
-    //     rate_limiter_config: RateLimiterConfig::default(),
-    // });
+    let collateral_amount = reserve.deposit_liquidity(liquidity_amount)?;
 
     //step 1
     //transfer the liquidity_amount from the signer's token account to the liquidity reserve account
