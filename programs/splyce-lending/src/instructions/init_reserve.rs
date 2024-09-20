@@ -1,4 +1,6 @@
 use crate::state::*;
+use crate::utils::token::*;
+use crate::utils::ErrorCode;
 use anchor_lang::prelude::*;
 use anchor_spl::token::Token;
 
@@ -131,10 +133,25 @@ pub fn handle_init_reserve(
 
     //step 1
     //transfer the liquidity_amount from the signer's token account to the liquidity reserve account
+    transfer_token_to(
+        *token_program.key,
+        ctx.accounts.liquidity_user_account.to_account_info(),
+        ctx.accounts.liquidity_reserve_account.to_account_info(),
+        signer,
+        liquidity_amount,
+    )?;
 
     //step 2
     //mint the collateral mint to the collateral user account
     //need authority_signer_seeds because the authority is the lending market
+    mint_tokens(
+        *token_program.key,
+        ctx.accounts.collateral_mint_account.to_account_info(),
+        ctx.accounts.collateral_user_account.to_account_info(),
+        signer,
+        collateral_amount,
+        &[&[&signer.key.to_bytes().as_ref()]],
+    )?;
 
     Ok(())
 }
