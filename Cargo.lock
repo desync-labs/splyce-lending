@@ -1955,9 +1955,9 @@ dependencies = [
 
 [[package]]
 name = "solana-program"
-version = "2.0.9"
+version = "2.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51237f3618428e8b9dd1e5c3d89b8f44f00dbcb88a7ad577ebdfdfac51501c61"
+checksum = "e8a675afa9b0a9e381ea377a27730b4f39fc05f2539607efc545723733029c89"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -1994,7 +1994,7 @@ dependencies = [
  "serde_derive",
  "sha2 0.10.8",
  "sha3 0.10.8",
- "solana-sdk-macro 2.0.9",
+ "solana-sdk-macro 2.0.10",
  "thiserror",
  "wasm-bindgen",
 ]
@@ -2069,9 +2069,9 @@ dependencies = [
 
 [[package]]
 name = "solana-sdk-macro"
-version = "2.0.9"
+version = "2.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45b6e930455ef68cf15e5a22a0e0c207e67c3d70978a565e0a64f568c8a24129"
+checksum = "193006436577cb4aa8e52fbb432c3f14c2d4d7b3b00f48f3485225ea9ca45a08"
 dependencies = [
  "bs58 0.5.1",
  "proc-macro2",
@@ -2330,7 +2330,7 @@ dependencies = [
  "anchor-spl",
  "num-derive",
  "num-traits",
- "solana-program 2.0.9",
+ "solana-program 2.0.10",
 ]
 
 [[package]]

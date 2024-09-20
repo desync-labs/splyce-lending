@@ -2,6 +2,7 @@ use super::*;
 use anchor_lang::prelude::*;
 //TODO change error to Anchor error
 use crate::error::ErrorCode;
+use std::result::Result as StdResult; // Alias standard Result to avoid confusion
 
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
@@ -371,149 +372,153 @@ impl Reserve {
 
     /// Calculate bonus as a percentage
     /// the value will be in range [0, MAX_BONUS_PCT]
-    pub fn calculate_bonus(&self, obligation: &Obligation) -> Result<Bonus> {
-        if obligation.borrowed_value < obligation.unhealthy_borrow_value {
-            if obligation.closeable {
-                return Ok(Bonus {
-                    total_bonus: 0,
-                    protocol_liquidation_fee: 0,
-                });
-            }
+    /// Comment out fns that deal with obligation
+    /// TODO restore fns when obligation is implemented
+    // pub fn calculate_bonus(&self, obligation: &Obligation) -> Result<Bonus> {
+    //     if obligation.borrowed_value < obligation.unhealthy_borrow_value {
+    //         if obligation.closeable {
+    //             return Ok(Bonus {
+    //                 total_bonus: 0,
+    //                 protocol_liquidation_fee: 0,
+    //             });
+    //         }
     
-            msg!("Obligation is healthy so a liquidation bonus can't be calculated");
-            return Err(ErrorCode::ObligationHealthy);
-        }
+    //         msg!("Obligation is healthy so a liquidation bonus can't be calculated");
+    //         return Err(ErrorCode::ObligationHealthy);
+    //     }
     
-        let liquidation_bonus = self.config.liquidation_bonus as u128 * PERCENT_SCALER as u128;
-        let max_liquidation_bonus = self.config.max_liquidation_bonus as u128 * PERCENT_SCALER as u128;
-        let protocol_liquidation_fee = self.config.protocol_liquidation_fee as u128 * PERCENT_SCALER as u128;
+    //     let liquidation_bonus = self.config.liquidation_bonus as u128 * PERCENT_SCALER as u128;
+    //     let max_liquidation_bonus = self.config.max_liquidation_bonus as u128 * PERCENT_SCALER as u128;
+    //     let protocol_liquidation_fee = self.config.protocol_liquidation_fee as u128 * PERCENT_SCALER as u128;
     
-        if obligation.unhealthy_borrow_value == obligation.super_unhealthy_borrow_value {
-            return Ok(Bonus {
-                total_bonus: liquidation_bonus.checked_add(protocol_liquidation_fee)
-                    .map(|b| b.min(MAX_BONUS_PCT as u128 * PERCENT_SCALER as u128))
-                    .ok_or(ErrorCode::MathOverflow)?,
-                protocol_liquidation_fee,
-            });
-        }
+    //     if obligation.unhealthy_borrow_value == obligation.super_unhealthy_borrow_value {
+    //         return Ok(Bonus {
+    //             total_bonus: liquidation_bonus.checked_add(protocol_liquidation_fee)
+    //                 .map(|b| b.min(MAX_BONUS_PCT as u128 * PERCENT_SCALER as u128))
+    //                 .ok_or(ErrorCode::MathOverflow)?,
+    //             protocol_liquidation_fee,
+    //         });
+    //     }
     
-        let weight = (obligation.borrowed_value.checked_sub(obligation.unhealthy_borrow_value)
-            .ok_or(ErrorCode::MathOverflow)?)
-            .checked_div(obligation.super_unhealthy_borrow_value.checked_sub(obligation.unhealthy_borrow_value)
-            .ok_or(ErrorCode::MathOverflow)?)
-            .unwrap_or(1);
+    //     let weight = (obligation.borrowed_value.checked_sub(obligation.unhealthy_borrow_value)
+    //         .ok_or(ErrorCode::MathOverflow)?)
+    //         .checked_div(obligation.super_unhealthy_borrow_value.checked_sub(obligation.unhealthy_borrow_value)
+    //         .ok_or(ErrorCode::MathOverflow)?)
+    //         .unwrap_or(1);
     
-        let bonus = liquidation_bonus.checked_add(weight.checked_mul(max_liquidation_bonus.checked_sub(liquidation_bonus)
-            .ok_or(ErrorCode::MathOverflow)?)
-            .ok_or(ErrorCode::MathOverflow)?)
-            .and_then(|b| b.checked_add(protocol_liquidation_fee))
-            .map(|b| b.min(MAX_BONUS_PCT as u128))
-            .ok_or(ErrorCode::MathOverflow)?;
+    //     let bonus = liquidation_bonus.checked_add(weight.checked_mul(max_liquidation_bonus.checked_sub(liquidation_bonus)
+    //         .ok_or(ErrorCode::MathOverflow)?)
+    //         .ok_or(ErrorCode::MathOverflow)?)
+    //         .and_then(|b| b.checked_add(protocol_liquidation_fee))
+    //         .map(|b| b.min(MAX_BONUS_PCT as u128))
+    //         .ok_or(ErrorCode::MathOverflow)?;
     
-        Ok(Bonus {
-            total_bonus: bonus,
-            protocol_liquidation_fee,
-        })
-    }
+    //     Ok(Bonus {
+    //         total_bonus: bonus,
+    //         protocol_liquidation_fee,
+    //     })
+    // }
 
     /// Liquidate some or all of an unhealthy obligation
-    pub fn calculate_liquidation(
-        &self,
-        amount_to_liquidate: u64,
-        obligation: &Obligation,
-        liquidity: &ObligationLiquidity,
-        collateral: &ObligationCollateral,
-        bonus: &Bonus,
-    ) -> Result<CalculateLiquidationResult> {
-        if bonus.total_bonus > MAX_BONUS_PCT as u128 * PERCENT_SCALER as u128 {
-            msg!("Bonus rate cannot exceed maximum bonus rate");
-            return Err(ErrorCode::InvalidAmount);
-        }
+    /// Comment out fns that deal with obligation
+    /// TODO restore fns when obligation is implemented
+    // pub fn calculate_liquidation(
+    //     &self,
+    //     amount_to_liquidate: u64,
+    //     obligation: &Obligation,
+    //     liquidity: &ObligationLiquidity,
+    //     collateral: &ObligationCollateral,
+    //     bonus: &Bonus,
+    // ) -> Result<CalculateLiquidationResult> {
+    //     if bonus.total_bonus > MAX_BONUS_PCT as u128 * PERCENT_SCALER as u128 {
+    //         msg!("Bonus rate cannot exceed maximum bonus rate");
+    //         return Err(ErrorCode::InvalidAmount);
+    //     }
     
-        let bonus_rate = bonus.total_bonus.checked_add(1)
-            .ok_or(ErrorCode::MathOverflow)?;
+    //     let bonus_rate = bonus.total_bonus.checked_add(1)
+    //         .ok_or(ErrorCode::MathOverflow)?;
     
-        let max_amount = if amount_to_liquidate == u64::MAX {
-            liquidity.borrowed_amount_wads
-        } else {
-            amount_to_liquidate as u128
-        };
+    //     let max_amount = if amount_to_liquidate == u64::MAX {
+    //         liquidity.borrowed_amount_wads
+    //     } else {
+    //         amount_to_liquidate as u128
+    //     };
     
-        let settle_amount;
-        let repay_amount;
-        let withdraw_amount;
+    //     let settle_amount;
+    //     let repay_amount;
+    //     let withdraw_amount;
     
-        if liquidity.market_value <= 1 {
-            let liquidation_value = liquidity.market_value.checked_mul(bonus_rate)
-                .ok_or(ErrorCode::MathOverflow)?;
+    //     if liquidity.market_value <= 1 {
+    //         let liquidation_value = liquidity.market_value.checked_mul(bonus_rate)
+    //             .ok_or(ErrorCode::MathOverflow)?;
             
-            match liquidation_value.cmp(&collateral.market_value) {
-                Ordering::Greater => {
-                    let repay_pct = collateral.market_value.checked_div(liquidation_value)
-                        .ok_or(ErrorCode::MathOverflow)?;
-                    settle_amount = liquidity.borrowed_amount_wads.checked_mul(repay_pct)
-                        .ok_or(ErrorCode::MathOverflow)?;
-                    repay_amount = settle_amount;
-                    withdraw_amount = collateral.deposited_amount;
-                }
-                Ordering::Equal => {
-                    settle_amount = liquidity.borrowed_amount_wads;
-                    repay_amount = settle_amount;
-                    withdraw_amount = collateral.deposited_amount;
-                }
-                Ordering::Less => {
-                    let withdraw_pct = liquidation_value.checked_div(collateral.market_value)
-                        .ok_or(ErrorCode::MathOverflow)?;
-                    settle_amount = liquidity.borrowed_amount_wads;
-                    repay_amount = settle_amount;
-                    withdraw_amount = collateral.deposited_amount.checked_mul(withdraw_pct)
-                        .ok_or(ErrorCode::MathOverflow)?;
-                }
-            }
-        } else {
-            // Partial liquidation
-            let liquidation_amount = obligation
-                .max_liquidation_amount(liquidity)?
-                .min(max_amount);
-            let liquidation_pct = liquidation_amount.checked_div(liquidity.borrowed_amount_wads)
-                .ok_or(ErrorCode::MathOverflow)?;
-            let liquidation_value = liquidity
-                .market_value
-                .checked_mul(liquidation_pct)?
-                .checked_mul(bonus_rate)
-                .ok_or(ErrorCode::MathOverflow)?;
+    //         match liquidation_value.cmp(&collateral.market_value) {
+    //             Ordering::Greater => {
+    //                 let repay_pct = collateral.market_value.checked_div(liquidation_value)
+    //                     .ok_or(ErrorCode::MathOverflow)?;
+    //                 settle_amount = liquidity.borrowed_amount_wads.checked_mul(repay_pct)
+    //                     .ok_or(ErrorCode::MathOverflow)?;
+    //                 repay_amount = settle_amount;
+    //                 withdraw_amount = collateral.deposited_amount;
+    //             }
+    //             Ordering::Equal => {
+    //                 settle_amount = liquidity.borrowed_amount_wads;
+    //                 repay_amount = settle_amount;
+    //                 withdraw_amount = collateral.deposited_amount;
+    //             }
+    //             Ordering::Less => {
+    //                 let withdraw_pct = liquidation_value.checked_div(collateral.market_value)
+    //                     .ok_or(ErrorCode::MathOverflow)?;
+    //                 settle_amount = liquidity.borrowed_amount_wads;
+    //                 repay_amount = settle_amount;
+    //                 withdraw_amount = collateral.deposited_amount.checked_mul(withdraw_pct)
+    //                     .ok_or(ErrorCode::MathOverflow)?;
+    //             }
+    //         }
+    //     } else {
+    //         // Partial liquidation
+    //         let liquidation_amount = obligation
+    //             .max_liquidation_amount(liquidity)?
+    //             .min(max_amount);
+    //         let liquidation_pct = liquidation_amount.checked_div(liquidity.borrowed_amount_wads)
+    //             .ok_or(ErrorCode::MathOverflow)?;
+    //         let liquidation_value = liquidity
+    //             .market_value
+    //             .checked_mul(liquidation_pct)?
+    //             .checked_mul(bonus_rate)
+    //             .ok_or(ErrorCode::MathOverflow)?;
     
-            match liquidation_value.cmp(&collateral.market_value) {
-                Ordering::Greater => {
-                    let repay_pct = collateral.market_value.checked_div(liquidation_value)
-                        .ok_or(ErrorCode::MathOverflow)?;
-                    settle_amount = liquidation_amount.checked_mul(repay_pct)
-                        .ok_or(ErrorCode::MathOverflow)?;
-                    repay_amount = settle_amount;
-                    withdraw_amount = collateral.deposited_amount;
-                }
-                Ordering::Equal => {
-                    settle_amount = liquidation_amount;
-                    repay_amount = settle_amount;
-                    withdraw_amount = collateral.deposited_amount;
-                }
-                Ordering::Less => {
-                    let withdraw_pct = liquidation_value.checked_div(collateral.market_value)
-                        .ok_or(ErrorCode::MathOverflow)?;
-                    settle_amount = liquidation_amount;
-                    repay_amount = settle_amount;
-                    withdraw_amount = collateral.deposited_amount.checked_mul(withdraw_pct)
-                        .ok_or(ErrorCode::MathOverflow)?;
-                }
-            }
-        }
+    //         match liquidation_value.cmp(&collateral.market_value) {
+    //             Ordering::Greater => {
+    //                 let repay_pct = collateral.market_value.checked_div(liquidation_value)
+    //                     .ok_or(ErrorCode::MathOverflow)?;
+    //                 settle_amount = liquidation_amount.checked_mul(repay_pct)
+    //                     .ok_or(ErrorCode::MathOverflow)?;
+    //                 repay_amount = settle_amount;
+    //                 withdraw_amount = collateral.deposited_amount;
+    //             }
+    //             Ordering::Equal => {
+    //                 settle_amount = liquidation_amount;
+    //                 repay_amount = settle_amount;
+    //                 withdraw_amount = collateral.deposited_amount;
+    //             }
+    //             Ordering::Less => {
+    //                 let withdraw_pct = liquidation_value.checked_div(collateral.market_value)
+    //                     .ok_or(ErrorCode::MathOverflow)?;
+    //                 settle_amount = liquidation_amount;
+    //                 repay_amount = settle_amount;
+    //                 withdraw_amount = collateral.deposited_amount.checked_mul(withdraw_pct)
+    //                     .ok_or(ErrorCode::MathOverflow)?;
+    //             }
+    //         }
+    //     }
     
-        Ok(CalculateLiquidationResult {
-            settle_amount,
-            repay_amount,
-            withdraw_amount,
-        })
-    }
+    //     Ok(CalculateLiquidationResult {
+    //         settle_amount,
+    //         repay_amount,
+    //         withdraw_amount,
+    //     })
+    // }
 
     /// Calculate protocol cut of liquidation bonus always at least 1 lamport
     /// the bonus rate is always <= MAX_BONUS_PCT
@@ -629,10 +634,10 @@ pub struct ReserveLiquidity {
     pub supply_pubkey: Pubkey,
     /// Reserve liquidity pyth oracle account
     // pub pyth_oracle_pubkey: Pubkey,
-    pub pyth_oracle_feed_id: [u8; 32]
-    /// Reserve liquidity switchboard oracle account
+    pub pyth_oracle_feed_id: [u8; 32],
+    // Reserve liquidity switchboard oracle account
     // pub switchboard_oracle_pubkey: Pubkey, 2024-09-19 comment out for now, add back in later if needed
-    /// Reserve liquidity available
+    // Reserve liquidity available
     pub available_amount: u64,
     /// Reserve liquidity borrowed
     pub borrowed_amount_wads: u128,
@@ -705,7 +710,7 @@ impl ReserveLiquidity {
     }
 
     /// Subtract borrow amount from available liquidity and add to borrows
-    pub fn borrow(&mut self, borrow_amount: u128) -> Result<(), ErrorCode> {
+    pub fn borrow(&mut self, borrow_amount: u128) -> Result<()> {
         // Ensure the borrow amount does not exceed the available liquidity
         if borrow_amount > self.available_amount as u128 {
             msg!("Borrow amount cannot exceed available amount");
@@ -728,7 +733,7 @@ impl ReserveLiquidity {
     }
 
     /// Add repay amount to available liquidity and subtract settle amount from total borrows
-    pub fn repay(&mut self, repay_amount: u64, settle_amount: u128) -> Result<(), ErrorCode> {
+    pub fn repay(&mut self, repay_amount: u64, settle_amount: u128) -> Result<()> {
         // Add the repay amount to the available liquidity
         self.available_amount = self
             .available_amount
@@ -749,7 +754,7 @@ impl ReserveLiquidity {
 
     /// Forgive bad debt. This essentially socializes the loss across all ctoken holders of
     /// this reserve.
-    pub fn forgive_debt(&mut self, liquidity_amount: u128) -> Result<(), ErrorCode> {
+    pub fn forgive_debt(&mut self, liquidity_amount: u128) -> Result<()> {
         // Subtract the liquidity amount from the borrowed amount
         self.borrowed_amount_wads = self
             .borrowed_amount_wads
@@ -760,7 +765,7 @@ impl ReserveLiquidity {
     }
 
     /// Subtract settle amount from accumulated_protocol_fees_wads and withdraw_amount from available liquidity
-    pub fn redeem_fees(&mut self, withdraw_amount: u64) -> Result<(), ErrorCode> {
+    pub fn redeem_fees(&mut self, withdraw_amount: u64) -> Result<()> {
         // Subtract the withdraw amount from the available liquidity
         self.available_amount = self
             .available_amount
@@ -777,7 +782,7 @@ impl ReserveLiquidity {
     }
 
     /// Calculate the liquidity utilization rate of the reserve
-    pub fn utilization_rate(&self) -> Result<u128, ErrorCode> {
+    pub fn utilization_rate(&self) -> Result<u128> {
         let total_supply = self.total_supply()?;
         if total_supply == 0 || self.borrowed_amount_wads == 0 {
             return Ok(0);
@@ -806,7 +811,7 @@ impl ReserveLiquidity {
         current_borrow_rate: u128,
         slots_elapsed: u64,
         take_rate: u128,
-    ) -> Result<(), ErrorCode> {
+    ) -> Result<()> {
         // Calculate the slot interest rate
         let slot_interest_rate = current_borrow_rate
             .checked_div(SLOTS_PER_YEAR)
@@ -917,7 +922,7 @@ impl ReserveCollateral {
     fn exchange_rate(
         &self,
         total_liquidity: u128,
-    ) -> Result<CollateralExchangeRate, ProgramError> {
+    ) -> Result<CollateralExchangeRate> {
         let rate = if self.mint_total_supply == 0 || total_liquidity == 0 {
             INITIAL_COLLATERAL_RATE
         } else {
@@ -945,7 +950,7 @@ pub struct CollateralExchangeRate(u128);
 
 impl CollateralExchangeRate {
     /// Convert reserve collateral to liquidity
-    pub fn collateral_to_liquidity(&self, collateral_amount: u64) -> Result<u64, ProgramError> {
+    pub fn collateral_to_liquidity(&self, collateral_amount: u64) -> Result<u64> {
         self.u128_collateral_to_liquidity(collateral_amount as u128)
     }
 
@@ -953,7 +958,7 @@ impl CollateralExchangeRate {
     pub fn u128_collateral_to_liquidity(
         &self,
         collateral_amount: u128,
-    ) -> Result<u64, ProgramError> {
+    ) -> Result<u64> {
         collateral_amount
             .checked_div(self.0)
             .ok_or(ErrorCode::MathOverflow)?
@@ -962,7 +967,7 @@ impl CollateralExchangeRate {
     }
 
     /// Convert reserve liquidity to collateral
-    pub fn liquidity_to_collateral(&self, liquidity_amount: u64) -> Result<u64, ProgramError> {
+    pub fn liquidity_to_collateral(&self, liquidity_amount: u64) -> Result<u64> {
         self.u128_liquidity_to_collateral(liquidity_amount as u128)
     }
 
@@ -970,7 +975,7 @@ impl CollateralExchangeRate {
     pub fn u128_liquidity_to_collateral(
         &self,
         liquidity_amount: u128,
-    ) -> Result<u64, ProgramError> {
+    ) -> Result<u64> {
         liquidity_amount
             .checked_mul(self.0)
             .ok_or(ErrorCode::MathOverflow)?
@@ -979,12 +984,6 @@ impl CollateralExchangeRate {
     }
 }
 
-
-impl From<CollateralExchangeRate> for Rate {
-    fn from(exchange_rate: CollateralExchangeRate) -> Self {
-        exchange_rate.0
-    }
-}
 
 /// Reserve configuration values
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1162,18 +1161,30 @@ pub enum ReserveType {
     Isolated = 1,
 }
 
-TODO, calculate space and define it here
+// TODO, calculate space and define it here
 impl anchor_lang::Space for ReserveType {
     const INIT_SPACE: usize = 8 + 1;
 }
 
+// impl FromStr for ReserveType {
+//     type Err = ProgramError;
+//     fn from_str(input: &str) -> Result<Self> {
+//         match input {
+//             "Regular" => Ok(ReserveType::Regular),
+//             "Isolated" => Ok(ReserveType::Isolated),
+//             _ => Err(ErrorCode::InvalidConfig.into()),
+//         }
+//     }
+// }
+
 impl FromStr for ReserveType {
-    type Err = ProgramError;
-    fn from_str(input: &str) -> Result<Self> {
+    type Err = ProgramError; // Specify the error type as ProgramError
+
+    fn from_str(input: &str) -> StdResult<Self, Self::Err> { // Use StdResult explicitly
         match input {
             "Regular" => Ok(ReserveType::Regular),
             "Isolated" => Ok(ReserveType::Isolated),
-            _ => Err(ErrorCode::InvalidConfig.into()),
+            _ => Err(ErrorCode::InvalidConfig.into()), // Convert ErrorCode to ProgramError
         }
     }
 }

@@ -40,4 +40,16 @@ pub mod splyce_lending {
             risk_authority,
         )
     }
+
+    pub fn init_reserve(
+        ctx: Context<ReserveInit>,
+        liquidity_amount: u64,
+        key: u64,
+        feed_id: [u8; 32],
+        config: ReserveConfig,
+        is_test: bool,
+    ) -> Result<()> {
+        msg!("Instruction: init_reserve");
+        handle_init_reserve(ctx, liquidity_amount, key, feed_id, config, is_test)
+    }
 }

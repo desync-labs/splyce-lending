@@ -1,9 +1,8 @@
 use crate::state::*;
 use crate::utils::token::*;
-use crate::utils::ErrorCode;
+use crate::error::ErrorCode;
 use anchor_lang::prelude::*;
-use anchor_spl::token::Token;
-
+use anchor_spl::token::{Token, Mint, TokenAccount};
 use std::mem::size_of;
 
 /// Lending market context
@@ -33,7 +32,7 @@ pub struct ReserveInit<'info> {
     pub collateral_mint_account: Account<'info, Mint>, //what to give as LP token
 
     #[account(
-        init_if_needed,
+        init,
         payer = signer,
         associated_token::mint = collateral_mint_account,
         associated_token::authority = lending_market,
@@ -41,7 +40,7 @@ pub struct ReserveInit<'info> {
     pub collateral_reserve_account: Account<'info, TokenAccount>, //where the LP token sits in the reserve
 
     #[account(
-        init_if_needed,
+        init,
         payer = signer,
         associated_token::mint = collateral_mint_account,
         associated_token::authority = signer,
@@ -51,7 +50,7 @@ pub struct ReserveInit<'info> {
     pub liquidity_mint_account: Account<'info, Mint>, //what is being deposited. e.a. WSOL
 
     #[account(
-        init_if_needed,
+        init, //TODO: research init_if_needed and change to it if needed
         payer = signer,
         associated_token::mint = liquidity_mint_account,
         associated_token::authority = lending_market,
@@ -59,7 +58,7 @@ pub struct ReserveInit<'info> {
     pub liquidity_reserve_account: Account<'info, TokenAccount>, //where the WSOL sits in the reserve, destination of the deposit
 
     #[account(
-        init_if_needed,
+        init,//TODO: research init_if_needed and change to it if needed
         payer = signer,
         associated_token::mint = liquidity_mint_account,
         associated_token::authority = lending_market,
@@ -75,7 +74,7 @@ pub struct ReserveInit<'info> {
 
     pub token_program: Program<'info, Token>,
 
-    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub associated_token_program: Program<'info, TokenAccount>,
 
     pub rent: Sysvar<'info, Rent>,
 
@@ -91,20 +90,22 @@ pub fn handle_init_reserve(
     is_test: bool,
 ) -> Result<()> {
     require!(liquidity_amount > 0, ErrorCode::InvalidArgument);
-    let lendung_market = &mut ctx.accounts.lendung_market;
-    require!(lending_market.owner == signer.key(), ErrorCode::Unauthorized);
+    let lending_market = &mut ctx.accounts.lendung_market;
     let signer = &mut ctx.accounts.signer;
-
     let token_program = &ctx.accounts.token_program;
     let program_id = &ctx.program_id;
     let reserve = &mut ctx.accounts.reserve;
+
+    require!(lending_market.owner == signer.key(), ErrorCode::Unauthorized);
+
 
     let lending_PDA = Pubkey::find_program_address(&[&signer.key.to_bytes().as_ref()], *program_id).0;
     require!(lending_PDA == lending_market.key, ErrorCode::InvalidArgument);
 
     //for now, is_test should alwasy be set to true
+    let (market_price, expo) = (0, 0);
     if is_test {
-        let (market_price, expo) = ctx.accounts.mock_pyth_feed.get_price();
+        (market_price, expo) = ctx.accounts.mock_pyth_feed.get_price();
     } else {
         //TODO later add logic that fetches the price from the pyth feed on mainnet/testnet
     }

@@ -70,7 +70,7 @@ pub fn mint_tokens<'a>(
         token::mint_to(
             CpiContext::new(
                 token_program,
-                MintTo {
+                Mint {
                     mint,
                     to,
                     authority,
