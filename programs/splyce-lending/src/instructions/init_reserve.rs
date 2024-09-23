@@ -15,6 +15,7 @@ pub struct ReserveInit<'info> {
         payer = signer,
         space = size_of::<Reserve>(),
         seeds=[
+            b"reserve".as_ref(), 
             &key.to_le_bytes().as_ref(),
             &signer.key.to_bytes().as_ref()
         ],

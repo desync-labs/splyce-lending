@@ -14,6 +14,7 @@ import { Connection, Keypair, PublicKey, SystemProgram, Transaction, LAMPORTS_PE
 
 import { assert } from "chai";
 
+const wrappedSolMint = new PublicKey("So11111111111111111111111111111111111111112");
 
 async function airdropSol(publicKey, amount) {
   let airdropTx = await anchor.getProvider().connection.requestAirdrop(publicKey, amount * anchor.web3.LAMPORTS_PER_SOL);
@@ -41,7 +42,6 @@ async function wrapSOL(provider: anchor.AnchorProvider, amount: number): Promise
   const wallet = provider.wallet;
 
   // WSOL Mint Address (constant for Solana)
-  const wrappedSolMint = new PublicKey("So11111111111111111111111111111111111111112");
 
   // Calculate the amount in lamports
   const lamports = Math.round(amount * LAMPORTS_PER_SOL);
@@ -333,66 +333,216 @@ describe("splyce-lending", () => {
   });
 
   it("init_reserve", async () => {
-      // 1) Check SOL balance before airdrop
-      const balanceBefore = await provider.connection.getBalance(provider.wallet.publicKey);
-      console.log("Balance before airdrop:", balanceBefore / LAMPORTS_PER_SOL, "SOL");
-
-      // 2) Airdrop SOL (ensure sufficient SOL for wrapping and transactions)
-      const airdropAmount = 2; // Airdrop 2 SOL to cover wrapping and rent
-      await airdropSol(provider.wallet.publicKey, airdropAmount);
-
-      // 3) Check SOL balance after airdrop
-      const balanceAfter = await provider.connection.getBalance(provider.wallet.publicKey);
-      console.log("Balance after airdrop:", balanceAfter / LAMPORTS_PER_SOL, "SOL");
-
-      // 4) Wrap SOL into WSOL
-      const wrapAmount = 1; // Amount of SOL to wrap
-      const wsolTokenAccount = await wrapSOL(provider, wrapAmount);
-
-      // 5) Verify WSOL balance
-      const tokenAccountInfo = await provider.connection.getTokenAccountBalance(wsolTokenAccount);
-      console.log(`WSOL Token Account Balance: ${tokenAccountInfo.value.uiAmount} WSOL`);
-
-      assert.equal(tokenAccountInfo.value.uiAmount, wrapAmount, "WSOL balance should match the wrapped amount");
-
-      console.log("logging Token Account Info", tokenAccountInfo);
-
-      // 6) Init MockPythPriceFeed
-      // Derive the PDA for lending market using the signer's key (payer)
-      const initialPriceOfSolInLamport = (100 * LAMPORTS_PER_SOL ); // $100
-      const initialPriceOfSol = new anchor.BN(initialPriceOfSolInLamport); // $100
-      // const initialPriceOfSol = anchor.BN(100); // $100
-
-      const seeds = [
-        provider.wallet.publicKey.toBuffer(),
-        initialPriceOfSol.toArrayLike(Buffer, "le", 8)
-        ];
-      const [MockPythPriceFeedPDA, bump] = await PublicKey.findProgramAddress(
-        seeds,
-        program.programId
-      );
-
-    // Initialize the transaction for initializing the lending market
-    const tx1 = await program.methods
+    // 1) Check SOL balance before airdrop
+    const balanceBefore = await provider.connection.getBalance(provider.wallet.publicKey);
+    console.log("Balance before airdrop:", balanceBefore / LAMPORTS_PER_SOL, "SOL");
+  
+    // 2) Airdrop SOL (ensure sufficient SOL for wrapping and transactions)
+    const airdropAmount = 2; // Airdrop 2 SOL to cover wrapping and rent
+    await airdropSol(provider.wallet.publicKey, airdropAmount);
+  
+    // 3) Check SOL balance after airdrop
+    const balanceAfter = await provider.connection.getBalance(provider.wallet.publicKey);
+    console.log("Balance after airdrop:", balanceAfter / LAMPORTS_PER_SOL, "SOL");
+  
+    // 4) Wrap SOL into WSOL
+    const wrapAmount = 1; // Amount of SOL to wrap
+    const wsolTokenAccount = await wrapSOL(provider, wrapAmount);
+  
+    // 5) Verify WSOL balance
+    const tokenAccountInfo = await provider.connection.getTokenAccountBalance(wsolTokenAccount);
+    console.log(`WSOL Token Account Balance: ${tokenAccountInfo.value.uiAmount} WSOL`);
+  
+    assert.equal(tokenAccountInfo.value.uiAmount, wrapAmount, "WSOL balance should match the wrapped amount");
+  
+    console.log("Token Account Info:", tokenAccountInfo);
+  
+    // 6) Init MockPythPriceFeed
+    const initialPriceOfSolInLamports = new anchor.BN(100 * LAMPORTS_PER_SOL); // $100
+    const expo = new anchor.BN(9); // Exponent for price feed
+  
+    // Derive the PDA for the MockPythPriceFeed using the signer's key and initial price
+    const seeds = [
+      provider.wallet.publicKey.toBuffer(),
+      initialPriceOfSolInLamports.toArrayLike(Buffer, "le", 8),
+    ];
+    const [mockPythPriceFeedPDA, bump] = await PublicKey.findProgramAddress(
+      seeds,
+      program.programId
+    );
+  
+    // Initialize the mock Pyth price feed
+    await program.methods
       .initMockPythFeed(
-        initialPriceOfSol,
-        new anchor.BN(9),
+        initialPriceOfSolInLamports,
+        expo,
       )
       .accounts({
-        mockPythFeed: MockPythPriceFeedPDA,
+        mockPythFeed: mockPythPriceFeedPDA,
+        signer: provider.wallet.publicKey,
+        systemProgram: SystemProgram.programId,
       })
       .rpc();
-
-    console.log("Transaction signature:", tx1);
-
-    // const programAccount = await program.account;
-    // console.log("Program Account:", programAccount);
-    const mockPythPriceFeedPDA = await program.account.mockPythPriceFeed.fetch(
-      MockPythPriceFeedPDA
+  
+    console.log("Initialized MockPythPriceFeed at:", mockPythPriceFeedPDA.toBase58());
+  
+    const mockPythPriceFeedAccount = await program.account.mockPythPriceFeed.fetch(
+      mockPythPriceFeedPDA
     );
-    console.log("mockPythPriceFeedPDA Account:", mockPythPriceFeedPDA);
-
-
+    console.log("MockPythPriceFeed Account:", mockPythPriceFeedAccount);
+  
+    // 7) Prepare for init_reserve
+  
+    // Define 'key' for reserve
+    const key = new anchor.BN(1);
+  
+    // Derive reserve PDA
+    const [reservePDA, reserveBump] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from("reserve"),
+        key.toArrayLike(Buffer, 'le', 8),
+        provider.wallet.publicKey.toBuffer(),
+      ],
+      program.programId
+    );
+  
+    // Get lendingMarketPDA (from previous test)
+    const [lendingMarketPDA, lendingMarketBump] = await PublicKey.findProgramAddress(
+      [provider.wallet.publicKey.toBuffer()],
+      program.programId
+    );
+  
+    // Create a Keypair for the collateral mint account (LP token mint)
+    // This account will be initialized in the instruction with the mint authority set to the lending market
+    const collateralMintKeypair = Keypair.generate();
+  
+    // Airdrop SOL to collateralMintKeypair to cover rent for the mint account
+    await airdropSol(collateralMintKeypair.publicKey, 1); // Airdrop 1 SOL
+  
+    // Collateral Reserve Account (Associated Token Account for collateral mint, owned by lendingMarketPDA)
+    const collateralReserveAccount = await getAssociatedTokenAddress(
+      collateralMintKeypair.publicKey, // Collateral mint (LP token mint)
+      lendingMarketPDA,                // Owner of the account (PDA)
+      true,                            // Allow owner off curve
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+  
+    // Collateral User Account (Associated Token Account for collateral mint, owned by provider.wallet.publicKey)
+    const collateralUserAccount = await getAssociatedTokenAddress(
+      collateralMintKeypair.publicKey, // Collateral mint (LP token mint)
+      provider.wallet.publicKey,       // Owner of the account (on-curve)
+      false,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+  
+    // Liquidity Reserve Account (Associated Token Account for WSOL, owned by lendingMarketPDA)
+    const liquidityReserveAccount = await getAssociatedTokenAddress(
+      wrappedSolMint,                  // WSOL mint
+      lendingMarketPDA,                // Owner of the account (PDA)
+      true,                            // Allow owner off curve
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+  
+    // Liquidity Fee Account (Associated Token Account for WSOL, owned by lendingMarketPDA)
+    const liquidityFeeAccount = await getAssociatedTokenAddress(
+      wrappedSolMint,                  // WSOL mint
+      lendingMarketPDA,                // Owner of the account (PDA)
+      true,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+  
+    // Liquidity User Account is the WSOL token account of the provider.wallet
+    // This is where the WSOL comes from (provided by the default signer)
+    const liquidityUserAccount = wsolTokenAccount;
+  
+    // Prepare ReserveConfig
+    const reserveConfig = {
+      optimalUtilizationRate: 80,
+      maxUtilizationRate: 90,
+      loanToValueRatio: 50,
+      liquidationBonus: 5,
+      maxLiquidationBonus: 10,
+      liquidationThreshold: 60,
+      maxLiquidationThreshold: 70,
+      minBorrowRate: 0,
+      optimalBorrowRate: 4,
+      maxBorrowRate: 8,
+      superMaxBorrowRate: new anchor.BN(12),
+      fees: {
+        borrowFeeWad: new anchor.BN(0),
+        flashLoanFeeWad: new anchor.BN(0),
+        hostFeePercentage: 0,
+      },
+      depositLimit: new anchor.BN(1000 * LAMPORTS_PER_SOL),
+      borrowLimit: new anchor.BN(500 * LAMPORTS_PER_SOL),
+      feeReceiver: liquidityFeeAccount, // Ensure feeReceiver is correctly handled if needed
+      protocolLiquidationFee: 1,
+      protocolTakeRate: 1,
+      addedBorrowWeightBps: new anchor.BN(0),
+      reserveType: { regular: {} },
+      scaledPriceOffsetBps: new anchor.BN(0),
+      extraOraclePubkey: null,
+      attributedBorrowLimitOpen: new anchor.BN(0),
+      attributedBorrowLimitClose: new anchor.BN(0),
+      reserveSetterProgramId: null,
+    };
+  
+    // Define liquidity amount to deposit (0.5 SOL in lamports)
+    const liquidityAmount = new anchor.BN(0.5 * LAMPORTS_PER_SOL); // Deposit 0.5 SOL
+  
+    // Get feed_id from the mock Pyth price feed
+    const feedId = mockPythPriceFeedPDA.toBuffer();
+  
+    // Ensure feedId is 32 bytes
+    if (feedId.length !== 32) {
+      throw new Error('feedId must be 32 bytes');
+    }
+  
+    // Now, call the instruction to initialize the reserve
+    const tx = await program.methods
+      .initReserve(
+        liquidityAmount,
+        key,
+        Array.from(feedId),
+        reserveConfig,
+        true  // is_test
+      )
+      .accounts({
+        reserve: reservePDA,
+        lendingMarket: lendingMarketPDA,
+        collateralMintAccount: collateralMintKeypair.publicKey,
+        collateralReserveAccount: collateralReserveAccount,
+        collateralUserAccount: collateralUserAccount,
+        liquidityMintAccount: wrappedSolMint,
+        liquidityReserveAccount: liquidityReserveAccount,
+        liquidityFeeAccount: liquidityFeeAccount,
+        liquidityUserAccount: liquidityUserAccount,
+        signer: provider.wallet.publicKey,
+        systemProgram: SystemProgram.programId,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        mockPythFeed: mockPythPriceFeedPDA,
+      })
+      .signers([collateralMintKeypair]) // Removed feeReceiver
+      .rpc();
+  
+    console.log("initReserve transaction signature:", tx);
+  
+    // Fetch the reserve account and check its fields
+    const reserveAccount = await program.account.reserve.fetch(reservePDA);
+    console.log("Reserve Account:", reserveAccount);
+  
+    // Assert that the reserve account has been initialized correctly
+    assert.equal(reserveAccount.version, 1, "Reserve version should be 1");
+    assert.equal(reserveAccount.lendingMarket.toBase58(), lendingMarketPDA.toBase58(), "Lending market should match");
+    assert.equal(reserveAccount.key.toString(), key.toString(), "Reserve key should match");
+  
+    // Additional assertions can be added here as needed
   });
 
 });
