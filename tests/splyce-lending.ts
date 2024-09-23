@@ -356,6 +356,43 @@ describe("splyce-lending", () => {
       assert.equal(tokenAccountInfo.value.uiAmount, wrapAmount, "WSOL balance should match the wrapped amount");
 
       console.log("logging Token Account Info", tokenAccountInfo);
+
+      // 6) Init MockPythPriceFeed
+      // Derive the PDA for lending market using the signer's key (payer)
+      const initialPriceOfSolInLamport = (100 * LAMPORTS_PER_SOL ); // $100
+      const initialPriceOfSol = new anchor.BN(initialPriceOfSolInLamport); // $100
+      // const initialPriceOfSol = anchor.BN(100); // $100
+
+      const seeds = [
+        provider.wallet.publicKey.toBuffer(),
+        initialPriceOfSol.toArrayLike(Buffer, "le", 8)
+        ];
+      const [MockPythPriceFeedPDA, bump] = await PublicKey.findProgramAddress(
+        seeds,
+        program.programId
+      );
+
+    // Initialize the transaction for initializing the lending market
+    const tx1 = await program.methods
+      .initMockPythFeed(
+        initialPriceOfSol,
+        new anchor.BN(9),
+      )
+      .accounts({
+        mockPythFeed: MockPythPriceFeedPDA,
+      })
+      .rpc();
+
+    console.log("Transaction signature:", tx1);
+
+    // const programAccount = await program.account;
+    // console.log("Program Account:", programAccount);
+    const mockPythPriceFeedPDA = await program.account.mockPythPriceFeed.fetch(
+      MockPythPriceFeedPDA
+    );
+    console.log("mockPythPriceFeedPDA Account:", mockPythPriceFeedPDA);
+
+
   });
 
 });

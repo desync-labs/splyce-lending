@@ -52,4 +52,12 @@ pub mod splyce_lending {
         msg!("Instruction: init_reserve");
         handle_init_reserve(ctx, liquidity_amount, key, feed_id, config, is_test)
     }
+    pub fn init_mock_pyth_feed(
+        ctx: Context<InitMockPythPriceFeed>,
+        initial_price: u64,
+        expo: u32,
+    ) -> Result<()> {
+        msg!("Instruction: init_mock_pyth_feed");
+        handle_init_mock_pyth_feed(ctx, initial_price, expo)
+    }
 }

@@ -18,7 +18,7 @@ pub struct InitMockPythPriceFeed<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_init_mock_pyth_feed(ctx: Context<InitMockPythPriceFeed>, initial_price: u64, expo: i32) -> Result<()> {
+pub fn handle_init_mock_pyth_feed(ctx: Context<InitMockPythPriceFeed>, initial_price: u64, expo: u32) -> Result<()> {
     let mock_feed = &mut ctx.accounts.mock_pyth_feed;
     mock_feed.set_price(initial_price, expo);
     Ok(())
@@ -32,7 +32,7 @@ pub struct UpdateMockPythPrice<'info> {
     pub signer: Signer<'info>,
 }
 
-pub fn handle_update_mock_pyth_price(ctx: Context<UpdateMockPythPrice>, new_price: u64, expo: i32) -> Result<()> {
+pub fn handle_update_mock_pyth_price(ctx: Context<UpdateMockPythPrice>, new_price: u64, expo: u32) -> Result<()> {
     let mock_feed = &mut ctx.accounts.mock_pyth_feed;
     mock_feed.set_price(new_price, expo);
     Ok(())
