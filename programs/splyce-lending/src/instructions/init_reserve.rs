@@ -30,7 +30,7 @@ pub struct ReserveInit<'info> {
         mint::decimals = 9,
         mint::authority = lending_market,
     )]
-    pub collateral_mint_account: Account<'info, Mint>, //what to give as LP token
+    pub collateral_mint_account: Box<Account<'info, Mint>>, //what to give as LP token
 
     #[account(
         init,
@@ -38,7 +38,7 @@ pub struct ReserveInit<'info> {
         associated_token::mint = collateral_mint_account,
         associated_token::authority = lending_market,
     )]
-    pub collateral_reserve_account: Account<'info, TokenAccount>, //where the LP token sits in the reserve
+    pub collateral_reserve_account: Box<Account<'info, TokenAccount>>, //where the LP token sits in the reserve
 
     #[account(
         init,
@@ -46,9 +46,9 @@ pub struct ReserveInit<'info> {
         associated_token::mint = collateral_mint_account,
         associated_token::authority = signer,
     )]
-    pub collateral_user_account: Account<'info, TokenAccount>, //where the LP token sits in the user's account, where the LP token gets minted to
+    pub collateral_user_account: Box<Account<'info, TokenAccount>>, //where the LP token sits in the user's account, where the LP token gets minted to
 
-    pub liquidity_mint_account: Account<'info, Mint>, //what is being deposited. e.a. WSOL
+    pub liquidity_mint_account: Box<Account<'info, Mint>>, //what is being deposited. e.a. WSOL
 
     #[account(
         init, //TODO: research init_if_needed and change to it if needed
@@ -56,7 +56,7 @@ pub struct ReserveInit<'info> {
         associated_token::mint = liquidity_mint_account,
         associated_token::authority = lending_market,
     )]
-    pub liquidity_reserve_account: Account<'info, TokenAccount>, //where the WSOL sits in the reserve, destination of the deposit
+    pub liquidity_reserve_account: Box<Account<'info, TokenAccount>>, //where the WSOL sits in the reserve, destination of the deposit
 
     #[account(
         init,//TODO: research init_if_needed and change to it if needed
@@ -64,9 +64,9 @@ pub struct ReserveInit<'info> {
         associated_token::mint = liquidity_mint_account,
         associated_token::authority = lending_market,
     )]
-    pub liquidity_fee_account: Account<'info, TokenAccount>, //where the reserve fees are sent to
+    pub liquidity_fee_account: Box<Account<'info, TokenAccount>>, //where the reserve fees are sent to
 
-    pub liquidity_user_account: Account<'info, TokenAccount>, //where the WSOL sits in the user's account, source of the deposit
+    pub liquidity_user_account: Box<Account<'info, TokenAccount>>, //where the WSOL sits in the user's account, source of the deposit
 
     #[account(mut)]
     pub signer: Signer<'info>,
@@ -100,11 +100,11 @@ pub fn handle_init_reserve(
     require!(lending_market.owner == signer.key(), ErrorCode::Unauthorized);
 
 
-    let lending_PDA = Pubkey::find_program_address(&[&signer.key.to_bytes().as_ref()], *program_id).0;
-    require!(lending_PDA == lending_market.key(), ErrorCode::InvalidArgument);
+    let lending_pda = Pubkey::find_program_address(&[&signer.key.to_bytes().as_ref()], *program_id).0;
+    require!(lending_pda == lending_market.key(), ErrorCode::InvalidArgument);
 
     //for now, is_test should alwasy be set to true
-    let (market_price, expo) = (0, 0);
+    let (mut market_price, mut expo) = (0, 0);
     if is_test {
         (market_price, expo) = ctx.accounts.mock_pyth_feed.get_price();
     } else {
@@ -137,10 +137,10 @@ pub fn handle_init_reserve(
     //step 1
     //transfer the liquidity_amount from the signer's token account to the liquidity reserve account
     transfer_token_to(
-        *token_program.key,
+        token_program.to_account_info(),
         ctx.accounts.liquidity_user_account.to_account_info(),
         ctx.accounts.liquidity_reserve_account.to_account_info(),
-        signer,
+        signer.to_account_info(),
         liquidity_amount,
     )?;
 
@@ -148,10 +148,10 @@ pub fn handle_init_reserve(
     //mint the collateral mint to the collateral user account
     //need authority_signer_seeds because the authority is the lending market
     mint_tokens(
-        *token_program.key,
+        token_program.to_account_info(), // Correct
         ctx.accounts.collateral_mint_account.to_account_info(),
         ctx.accounts.collateral_user_account.to_account_info(),
-        signer,
+        signer.to_account_info(), // Also correct
         collateral_amount,
         &[&[&signer.key.to_bytes().as_ref()]],
     )?;

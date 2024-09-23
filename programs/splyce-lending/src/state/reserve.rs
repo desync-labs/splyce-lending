@@ -5,13 +5,13 @@ use crate::error::ErrorCode;
 use std::result::Result as StdResult; // Alias standard Result to avoid confusion
 
 use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
+// use num_traits::FromPrimitive;
 use solana_program::{
     clock::Slot,
 };
 use std::str::FromStr;
 use std::{
-    cmp::{max, min, Ordering},
+    cmp::{max, min},
 };
 
 /// Percentage of an obligation that can be repaid during each liquidation call
@@ -979,7 +979,7 @@ impl CollateralExchangeRate {
             .checked_div(self.0)
             .ok_or(ErrorCode::MathOverflow)?
             .try_into()
-            .map_err(|_| ProgramError::InvalidArgument)?)
+            .map_err(|_| ErrorCode::InvalidArgument)?)
     }
 
     /// Convert reserve liquidity to collateral
@@ -996,7 +996,7 @@ impl CollateralExchangeRate {
             .checked_mul(self.0)
             .ok_or(ErrorCode::MathOverflow)?
             .try_into()
-            .map_err(|_| ProgramError::InvalidArgument)?)
+            .map_err(|_| ErrorCode::InvalidArgument)?)
     }
 }
 
@@ -1194,14 +1194,19 @@ impl anchor_lang::Space for ReserveType {
 // }
 
 impl FromStr for ReserveType {
-    type Err = ProgramError; // Specify the error type as ProgramError
-
-    fn from_str(input: &str) -> StdResult<Self, Self::Err> { // Use StdResult explicitly
+    type Err = ProgramError;
+    fn from_str(input: &str) -> StdResult<Self, Self::Err> {
         match input {
             "Regular" => Ok(ReserveType::Regular),
             "Isolated" => Ok(ReserveType::Isolated),
-            _ => Err(ErrorCode::InvalidConfig), // Convert ErrorCode to ProgramError
+            _ => Err(ErrorCode::InvalidConfig.into()),
         }
+    }
+}
+
+impl From<ErrorCode> for ProgramError {
+    fn from(err: ErrorCode) -> ProgramError {
+        ProgramError::Custom(err as u32)
     }
 }
 
@@ -1258,6 +1263,65 @@ impl ReserveFees {
         Ok((origination_fee, host_fee))
     }
 
+    // fn calculate_fees(
+    //     &self,
+    //     amount: u128,
+    //     fee_wad: u64,
+    //     fee_calculation: FeeCalculation,
+    // ) -> Result<(u64, u64)> {
+    //     let borrow_fee_rate = fee_wad as u128;
+    //     let host_fee_rate = self.host_fee_percentage as u128;
+
+    //     if borrow_fee_rate > 0 && amount > 0 {
+    //         let need_to_assess_host_fee = host_fee_rate > 0;
+    //         let minimum_fee = if need_to_assess_host_fee {
+    //             2u64 // 1 token to owner, 1 to host
+    //         } else {
+    //             1u64 // 1 token to owner, nothing else
+    //         };
+
+    //         let borrow_fee_amount = match fee_calculation {
+    //             // Calculate fee to be added to borrow: fee = amount * rate
+    //             FeeCalculation::Exclusive => amount
+    //                 .checked_mul(borrow_fee_rate)
+    //                 .ok_or(ErrorCode::MathOverflow)?
+    //                 .checked_div(10u128.pow(18))
+    //                 .ok_or(ErrorCode::MathOverflow)?,
+    //             // Calculate fee to be subtracted from borrow: fee = amount * (rate / (rate + 1))
+    //             FeeCalculation::Inclusive => {
+    //                 let rate = borrow_fee_rate
+    //                     .checked_div(borrow_fee_rate.checked_add(10u128.pow(18)).ok_or(ErrorCode::MathOverflow)?)
+    //                     .ok_or(ErrorCode::MathOverflow)?;
+    //                 amount.checked_mul(rate).ok_or(ErrorCode::MathOverflow)?
+    //             }
+    //         };
+
+    //         let borrow_fee_u128 = borrow_fee_amount.max(minimum_fee as u128);
+    //         if borrow_fee_u128 >= amount {
+    //             msg!("Borrow amount is too small to receive liquidity after fees");
+    //             return Err(ErrorCode::BorrowTooSmall.into());
+    //         }
+
+    //         let borrow_fee = borrow_fee_u128.try_into().map_err(|_| ErrorCode::MathOverflow)?;
+    //         let host_fee = if need_to_assess_host_fee {
+    //             borrow_fee_u128
+    //                 .checked_mul(host_fee_rate)
+    //                 .ok_or(ErrorCode::MathOverflow)?
+    //                 .checked_div(100)
+    //                 .ok_or(ErrorCode::MathOverflow)?
+    //                 .try_into()
+    //                 .map_err(|_| ErrorCode::MathOverflow)?
+    //                 .max(1u64)
+    //         } else {
+    //             0
+    //         };
+
+    //         Ok((borrow_fee, host_fee))
+    //     } else {
+    //         Ok((0, 0))
+    //     }
+    // }
+
     fn calculate_fees(
         &self,
         amount: u128,
@@ -1266,7 +1330,7 @@ impl ReserveFees {
     ) -> Result<(u64, u64)> {
         let borrow_fee_rate = fee_wad as u128;
         let host_fee_rate = self.host_fee_percentage as u128;
-
+    
         if borrow_fee_rate > 0 && amount > 0 {
             let need_to_assess_host_fee = host_fee_rate > 0;
             let minimum_fee = if need_to_assess_host_fee {
@@ -1274,7 +1338,7 @@ impl ReserveFees {
             } else {
                 1u64 // 1 token to owner, nothing else
             };
-
+    
             let borrow_fee_amount = match fee_calculation {
                 // Calculate fee to be added to borrow: fee = amount * rate
                 FeeCalculation::Exclusive => amount
@@ -1290,32 +1354,35 @@ impl ReserveFees {
                     amount.checked_mul(rate).ok_or(ErrorCode::MathOverflow)?
                 }
             };
-
+    
             let borrow_fee_u128 = borrow_fee_amount.max(minimum_fee as u128);
             if borrow_fee_u128 >= amount {
                 msg!("Borrow amount is too small to receive liquidity after fees");
                 return Err(ErrorCode::BorrowTooSmall.into());
             }
-
+    
             let borrow_fee = borrow_fee_u128.try_into().map_err(|_| ErrorCode::MathOverflow)?;
+    
             let host_fee = if need_to_assess_host_fee {
-                borrow_fee_u128
+                let calculated_host_fee = borrow_fee_u128
                     .checked_mul(host_fee_rate)
                     .ok_or(ErrorCode::MathOverflow)?
                     .checked_div(100)
-                    .ok_or(ErrorCode::MathOverflow)?
-                    .try_into()
+                    .ok_or(ErrorCode::MathOverflow)?;
+    
+                TryInto::<u64>::try_into(calculated_host_fee) // Directly specify the type here
                     .map_err(|_| ErrorCode::MathOverflow)?
                     .max(1u64)
             } else {
                 0
             };
-
+    
             Ok((borrow_fee, host_fee))
         } else {
             Ok((0, 0))
         }
     }
+
 }
 
 /// Calculate fees exlusive or inclusive of an amount
@@ -1325,6 +1392,3 @@ pub enum FeeCalculation {
     /// Fee included in amount: fee = (rate / (1 + rate)) * amount
     Inclusive,
 }
-
-
-const RESERVE_LEN: usize = 619; // 1 + 8 + 1 + 32 + 32 + 1 + 32 + 32 + 32 + 8 + 16 + 16 + 16 + 32 + 8 + 32 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 8 + 8 + 1 + 8 + 8 + 32 + 1 + 1 + 16 + 230?

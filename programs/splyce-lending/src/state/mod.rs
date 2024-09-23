@@ -7,8 +7,9 @@ pub mod last_update;
 
 pub use lending_market::*;
 pub use rate_limiter::*;
-pub use scaler::*;
 pub use reserve::*;
+pub use scaler::*;
+
 pub use mock_pyth_price_feed::*;
 pub use last_update::*;
 
