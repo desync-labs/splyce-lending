@@ -1,9 +1,138 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { SplyceLending } from "../target/types/splyce_lending";
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
+import {
+  TOKEN_PROGRAM_ID,
+  createSyncNativeInstruction,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+} from "@solana/spl-token";
+console.log("TOKEN_PROGRAM_ID:", TOKEN_PROGRAM_ID.toBase58());
+console.log("ASSOCIATED_TOKEN_PROGRAM_ID:", ASSOCIATED_TOKEN_PROGRAM_ID.toBase58());
+import { Connection, Keypair, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
+
 import { assert } from "chai";
+
+
+async function airdropSol(publicKey, amount) {
+  let airdropTx = await anchor.getProvider().connection.requestAirdrop(publicKey, amount * anchor.web3.LAMPORTS_PER_SOL);
+  await confirmTransaction(airdropTx);
+}
+
+async function confirmTransaction(tx) {
+  const latestBlockHash = await anchor.getProvider().connection.getLatestBlockhash();
+  await anchor.getProvider().connection.confirmTransaction({
+    blockhash: latestBlockHash.blockhash,
+    lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
+    signature: tx,
+  });
+}
+
+/**
+ * Wraps SOL into WSOL by creating an associated token account, transferring lamports, and synchronizing the account.
+ *
+ * @param provider - The Anchor provider containing the connection and wallet.
+ * @param amount - The amount of SOL to wrap into WSOL.
+ * @returns The PublicKey of the WSOL associated token account.
+ */
+async function wrapSOL(provider: anchor.AnchorProvider, amount: number): Promise<PublicKey> {
+  const connection = provider.connection;
+  const wallet = provider.wallet;
+
+  // WSOL Mint Address (constant for Solana)
+  const wrappedSolMint = new PublicKey("So11111111111111111111111111111111111111112");
+
+  // Calculate the amount in lamports
+  const lamports = Math.round(amount * LAMPORTS_PER_SOL);
+  console.log(`Wrapping ${amount} SOL (${lamports} lamports)`);
+
+  // Derive the associated token account for WSOL
+  const wsolTokenAccount = await getAssociatedTokenAddress(
+    wrappedSolMint,
+    wallet.publicKey,
+    false, // Allow owner off curve
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID
+  );
+
+  console.log(`WSOL Associated Token Account: ${wsolTokenAccount.toBase58()}`);
+
+  // Initialize a transaction
+  const transaction = new Transaction();
+
+  // Check if the associated token account already exists
+  const accountInfo = await connection.getAccountInfo(wsolTokenAccount);
+  if (!accountInfo) {
+    console.log("Associated token account does not exist. Creating...");
+    // Create the associated token account for WSOL
+    transaction.add(
+      createAssociatedTokenAccountInstruction(
+        wallet.publicKey,       // Payer
+        wsolTokenAccount,       // Associated token account
+        wallet.publicKey,       // Owner
+        wrappedSolMint          // Mint
+      )
+    );
+  } else {
+    console.log("Associated token account already exists.");
+  }
+
+  // Transfer lamports to the WSOL token account to wrap SOL
+  console.log(`Transferring ${lamports} lamports to WSOL token account...`);
+  transaction.add(
+    SystemProgram.transfer({
+      fromPubkey: wallet.publicKey,
+      toPubkey: wsolTokenAccount,
+      lamports: lamports,
+    })
+  );
+
+  // Synchronize the native balance of the WSOL account
+  console.log("Synchronizing native balance of WSOL account...");
+  transaction.add(
+    createSyncNativeInstruction(
+      wsolTokenAccount,
+      TOKEN_PROGRAM_ID
+    )
+  );
+
+  // Set the fee payer
+  transaction.feePayer = wallet.publicKey;
+
+  // Fetch a recent blockhash
+  const { blockhash } = await connection.getLatestBlockhash("confirmed");
+  transaction.recentBlockhash = blockhash;
+
+  console.log(`Transaction feePayer set to: ${transaction.feePayer.toBase58()}`);
+  console.log(`Transaction recentBlockhash set to: ${transaction.recentBlockhash}`);
+
+  // Sign the transaction using the wallet and send it
+  try {
+    // Sign the transaction using the wallet
+    const signedTransaction = await wallet.signTransaction(transaction);
+
+    // Verify that the transaction has a recentBlockhash
+    if (!signedTransaction.recentBlockhash) {
+      throw new Error("Signed transaction is missing a recent blockhash.");
+    }
+
+    console.log(`Signed transaction blockhash: ${signedTransaction.recentBlockhash}`);
+
+    // Send the signed transaction
+    const signature = await connection.sendRawTransaction(signedTransaction.serialize(), { commitment: "confirmed" });
+
+    // Confirm the transaction
+    await confirmTransaction(signature);
+
+    console.log(`Wrapped ${amount} SOL into WSOL at ${wsolTokenAccount.toString()} with signature ${signature}`);
+    return wsolTokenAccount;
+  } catch (error) {
+    console.error("Error wrapping SOL into WSOL:", error);
+    throw error;
+  }
+}
+
 
 describe("splyce-lending", () => {
   // Configure the client to use the local cluster.
@@ -12,7 +141,7 @@ describe("splyce-lending", () => {
 
   const program = anchor.workspace.SplyceLending as Program<SplyceLending>;
 
-  it("Init_lending_market", async () => {
+  it("init_lending_market", async () => {
 
     // Set quote currency to "USD" padded with null bytes (32 bytes total)
     const quoteCurrency = Buffer.from(
@@ -202,4 +331,31 @@ describe("splyce-lending", () => {
       "Risk authority should be the newly set risk authority"
     );
   });
+
+  it("init_reserve", async () => {
+      // 1) Check SOL balance before airdrop
+      const balanceBefore = await provider.connection.getBalance(provider.wallet.publicKey);
+      console.log("Balance before airdrop:", balanceBefore / LAMPORTS_PER_SOL, "SOL");
+
+      // 2) Airdrop SOL (ensure sufficient SOL for wrapping and transactions)
+      const airdropAmount = 2; // Airdrop 2 SOL to cover wrapping and rent
+      await airdropSol(provider.wallet.publicKey, airdropAmount);
+
+      // 3) Check SOL balance after airdrop
+      const balanceAfter = await provider.connection.getBalance(provider.wallet.publicKey);
+      console.log("Balance after airdrop:", balanceAfter / LAMPORTS_PER_SOL, "SOL");
+
+      // 4) Wrap SOL into WSOL
+      const wrapAmount = 1; // Amount of SOL to wrap
+      const wsolTokenAccount = await wrapSOL(provider, wrapAmount);
+
+      // 5) Verify WSOL balance
+      const tokenAccountInfo = await provider.connection.getTokenAccountBalance(wsolTokenAccount);
+      console.log(`WSOL Token Account Balance: ${tokenAccountInfo.value.uiAmount} WSOL`);
+
+      assert.equal(tokenAccountInfo.value.uiAmount, wrapAmount, "WSOL balance should match the wrapped amount");
+
+      console.log("logging Token Account Info", tokenAccountInfo);
+  });
+
 });
