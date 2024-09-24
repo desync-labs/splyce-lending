@@ -1059,7 +1059,8 @@ pub struct ReserveConfig {
 
 // TODO, calculate space and define it here
 impl anchor_lang::Space for ReserveConfig {
-    const INIT_SPACE: usize = 143 + ReserveFees::INIT_SPACE + ReserveType::INIT_SPACE;
+    // const INIT_SPACE: usize = 143 + ReserveFees::INIT_SPACE + ReserveType::INIT_SPACE;
+    const INIT_SPACE: usize = 190; // Corrected size
 }
 
 /// validates reserve configs

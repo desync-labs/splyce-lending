@@ -13,21 +13,25 @@ use std::mem::size_of;
 pub struct ReserveInit<'info> {
     #[account(init,
         payer = signer,
-        space = size_of::<Reserve>(),
+        // space = size_of::<Reserve>(),
+        space = Reserve::INIT_SPACE,
         seeds=[
             b"reserve".as_ref(), 
-            &key.to_le_bytes().as_ref(),
+            // &key.to_le_bytes().as_ref(), //TODO investigate why this is different from the client
             &signer.key.to_bytes().as_ref()
         ],
         bump,
     )]
-    pub reserve: Account<'info, Reserve>,
+    pub reserve: Box<Account<'info, Reserve>>,
 
-    pub lending_market: Account<'info, LendingMarket>,
+    pub lending_market: Box<Account<'info, LendingMarket>>,
 
     #[account(
         init,
         payer = signer,
+        // seeds = [&signer.key().to_bytes().as_ref()],
+        // bump = lending_market.bump_seed,
+        // bump,
         mint::decimals = 9,
         mint::authority = lending_market,
     )]
@@ -38,14 +42,19 @@ pub struct ReserveInit<'info> {
         payer = signer,
         associated_token::mint = collateral_mint_account,
         associated_token::authority = lending_market,
+        // token::mint = collateral_mint_account,
+        // token::authority = lending_market,
     )]
     pub collateral_reserve_account: Box<Account<'info, TokenAccount>>, //where the LP token sits in the reserve
 
     #[account(
         init,
         payer = signer,
+        // seeds = [&signer.key().to_bytes().as_ref()],
         associated_token::mint = collateral_mint_account,
         associated_token::authority = signer,
+        // token::mint = collateral_mint_account,
+        // token::authority = signer,
     )]
     pub collateral_user_account: Box<Account<'info, TokenAccount>>, //where the LP token sits in the user's account, where the LP token gets minted to
 
@@ -54,16 +63,26 @@ pub struct ReserveInit<'info> {
     #[account(
         init, //TODO: research init_if_needed and change to it if needed
         payer = signer,
+        // seeds = [&signer.key().to_bytes().as_ref()],
+        // seeds = [b"liquidity_reserve".as_ref(), &signer.key().to_bytes().as_ref()],
+        // bump,
+        // token::mint = liquidity_mint_account,
+        // token::authority = lending_market,
         associated_token::mint = liquidity_mint_account,
-        associated_token::authority = lending_market,
+        associated_token::authority = lending_market,   
     )]
     pub liquidity_reserve_account: Box<Account<'info, TokenAccount>>, //where the WSOL sits in the reserve, destination of the deposit
 
     #[account(
         init,//TODO: research init_if_needed and change to it if needed
         payer = signer,
+        // seeds = [&signer.key().to_bytes().as_ref()],
+        // seeds = [b"liquidity_fee".as_ref(), &signer.key().to_bytes().as_ref()],
+        // bump,
+        // token::mint = liquidity_mint_account,
+        // token::authority = lending_market,
         associated_token::mint = liquidity_mint_account,
-        associated_token::authority = lending_market,
+        associated_token::authority = fee_account_owner,
     )]
     pub liquidity_fee_account: Box<Account<'info, TokenAccount>>, //where the reserve fees are sent to
 
@@ -71,7 +90,10 @@ pub struct ReserveInit<'info> {
 
     #[account(mut)]
     pub signer: Signer<'info>,
-
+    
+    /// CHECK
+    pub fee_account_owner: AccountInfo<'info>,
+    
     pub system_program: Program<'info, System>,
 
     pub token_program: Program<'info, Token>,
@@ -80,7 +102,7 @@ pub struct ReserveInit<'info> {
 
     pub rent: Sysvar<'info, Rent>,
 
-    pub mock_pyth_feed: Account<'info, MockPythPriceFeed>,
+    pub mock_pyth_feed: Box<Account<'info, MockPythPriceFeed>>,
 }
 
 pub fn handle_init_reserve(
