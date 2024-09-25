@@ -259,6 +259,8 @@ describe("splyce-lending", () => {
     const payer = provider.wallet.publicKey;
 
     const newOwner = Keypair.generate();
+    //airdrop some SOL to the new owner
+    await airdropSol(newOwner.publicKey, 1);
     const liquidator = Keypair.generate();
     const riskAuthority = Keypair.generate();
 
@@ -340,6 +342,24 @@ describe("splyce-lending", () => {
       riskAuthority.publicKey.toBase58(),
       "Risk authority should be the newly set risk authority"
     );
+
+    const originalOwner = payer;
+        // Initialize the transaction to revert the owner back to originalOwner
+        const txRevert = await program.methods
+        .setLendingMarketOwnerAndConfig(
+          originalOwner, // Revert back to the original owner
+          rateLimiterConfig,
+          liquidator.publicKey,
+          riskAuthority.publicKey
+        )
+        .accounts({
+          lendingMarket: lendingMarketPDA,
+          signer: newOwner.publicKey, // Current owner must sign
+        })
+        .signers([
+          newOwner, // Include newOwner as a signer
+        ])
+        .rpc();
   });
 
   it("init_reserve", async () => {
@@ -430,7 +450,10 @@ describe("splyce-lending", () => {
       // Create a Keypair for the collateral mint account (LP token mint)
       // This account will be initialized in the instruction with the mint authority set to the lending market
       const collateralMintKeypair = Keypair.generate();
+      console.log("Collateral Mint Account:", collateralMintKeypair.publicKey.toBase58());
       const liquidityFeeAccountOwner = Keypair.generate();
+      console.log("Liquidity Fee Account Owner:", liquidityFeeAccountOwner.publicKey.toBase58());
+      await airdropSol(liquidityFeeAccountOwner.publicKey, 1); // Airdrop 1 SOL
       console.log("Collateral Mint Account:", collateralMintKeypair.publicKey.toBase58());
       const defaultSigner = provider.wallet.publicKey;
       console.log("Default Signer:", defaultSigner.toBase58());
@@ -558,7 +581,9 @@ describe("splyce-lending", () => {
           mockPythFeed: mockPythPriceFeedPDA,
         })
         .signers([
-          collateralMintKeypair        ])
+          collateralMintKeypair,
+          liquidityFeeAccountOwner
+        ])
         .rpc();
   
       // If the transaction is successful, you can proceed with further assertions

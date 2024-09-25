@@ -30,7 +30,8 @@ pub fn handle_init_lending_market(
 ) -> Result<()> {
     let lending_market = &mut ctx.accounts.lending_market;
     let signer = &mut ctx.accounts.signer;
-
+    //log signer
+    msg!("Signer lending: {:?}", signer.key());
     let token_program = &ctx.accounts.token_program;
     let program_id = &ctx.program_id;
 

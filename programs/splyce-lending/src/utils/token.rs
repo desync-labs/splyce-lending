@@ -17,7 +17,7 @@ pub fn transfer_token_from<'a>(
                 to,
                 authority,
             },
-            &[&seeds]
+            &[seeds]
         ),
         amount,
     )
@@ -49,7 +49,7 @@ pub fn mint_tokens<'a>(
     to: AccountInfo<'a>,
     authority: AccountInfo<'a>,
     amount: u64,
-    signer_seeds: &[&[&[u8]]],
+    signer_seeds: &[&[u8]], 
 ) -> Result<()> {
     if !signer_seeds.is_empty() {
         // When using a PDA (Program Derived Address) as the authority
@@ -61,7 +61,7 @@ pub fn mint_tokens<'a>(
                     to,
                     authority,
                 },
-                signer_seeds, // Correctly passing signer seeds
+                &[signer_seeds],
             ),
             amount,
         )

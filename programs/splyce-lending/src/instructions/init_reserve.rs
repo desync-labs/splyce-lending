@@ -14,6 +14,7 @@ pub struct ReserveInit<'info> {
     #[account(init,
         payer = signer,
         // space = size_of::<Reserve>(),
+        // space = Reserve::INIT_SPACE + 1000000,
         space = Reserve::INIT_SPACE,
         seeds=[
             b"reserve".as_ref(), 
@@ -91,8 +92,11 @@ pub struct ReserveInit<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
     
-    /// CHECK
-    pub fee_account_owner: AccountInfo<'info>,
+    // /// CHECK
+    // pub fee_account_owner: AccountInfo<'info>,
+
+    #[account(mut)]
+    pub fee_account_owner: Signer<'info>,
     
     pub system_program: Program<'info, System>,
 
@@ -113,71 +117,99 @@ pub fn handle_init_reserve(
     config: ReserveConfig,
     is_test: bool,
 ) -> Result<()> {
+    msg!("Starting InitReserve");
+
+    // Validate liquidity amount
     require!(liquidity_amount > 0, ErrorCode::InvalidArgument);
+    
     let lending_market = &mut ctx.accounts.lending_market;
     let signer = &mut ctx.accounts.signer;
     let token_program = &ctx.accounts.token_program;
     let program_id = &ctx.program_id;
     let reserve = &mut ctx.accounts.reserve;
 
+    msg!("Checking lending market ownership");
+    //log signer for debugging
+    msg!("Signer: {:?}", signer.key());
+    //log lending_market.owner
+    msg!("Lending Market Owner: {:?}", lending_market.owner);
     require!(lending_market.owner == signer.key(), ErrorCode::Unauthorized);
 
+    // msg!("Deriving lending_market PDA and verifying bump seed");
+    // let (expected_pda, expected_bump) = Pubkey::find_program_address(
+    //     &[&signer.key.to_bytes()],
+    //     program_id
+    // );
+    // require!(
+    //     expected_pda == lending_market.key(),
+    //     ErrorCode::InvalidArgument
+    // );
+    // require!(
+    //     expected_bump == lending_market.bump_seed,
+    //     ErrorCode::InvalidArgument
+    // );
 
-    let lending_pda = Pubkey::find_program_address(&[&signer.key.to_bytes().as_ref()], *program_id).0;
-    require!(lending_pda == lending_market.key(), ErrorCode::InvalidArgument);
+    // msg!("Fetching market price");
+    // let (mut market_price, mut expo) = (0, 0);
+    // if is_test {
+    //     (market_price, expo) = ctx.accounts.mock_pyth_feed.get_price();
+    //     msg!("Test mode: Market price fetched as {}", market_price);
+    // } else {
+    //     // TODO: Implement mainnet/testnet price fetching
+    //     msg!("Mainnet/Testnet mode: Market price fetching not implemented");
+    // }
 
-    //for now, is_test should alwasy be set to true
-    let (mut market_price, mut expo) = (0, 0);
-    if is_test {
-        (market_price, expo) = ctx.accounts.mock_pyth_feed.get_price();
-    } else {
-        //TODO later add logic that fetches the price from the pyth feed on mainnet/testnet
-    }
+    // msg!("Initializing reserve");
+    // reserve.init(InitReserveParams {
+    //     current_slot: Clock::get()?.slot,
+    //     lending_market: lending_market.key(),
+    //     liquidity: ReserveLiquidity::new(NewReserveLiquidityParams {
+    //         mint_pubkey: ctx.accounts.liquidity_mint_account.key(),
+    //         mint_decimals: ctx.accounts.liquidity_mint_account.decimals,
+    //         supply_pubkey: ctx.accounts.liquidity_reserve_account.key(),
+    //         pyth_oracle_feed_id: feed_id,
+    //         market_price: market_price as u128,
+    //         smoothed_market_price: market_price as u128,
+    //     }),
+    //     collateral: ReserveCollateral::new(NewReserveCollateralParams {
+    //         mint_pubkey: ctx.accounts.collateral_mint_account.key(),
+    //         supply_pubkey: ctx.accounts.collateral_reserve_account.key(),
+    //     }),
+    //     config,
+    //     rate_limiter_config: RateLimiterConfig::default(),
+    //     key,
+    // });
+    // msg!("Reserve initialized");
 
-    //need to save feedId as [u8 : 32]. the process of changing hex string to u8 array is done in the client side.
-    reserve.init(InitReserveParams {
-        current_slot: Clock::get()?.slot,
-        lending_market: lending_market.key(),
-        liquidity: ReserveLiquidity::new(NewReserveLiquidityParams {
-            mint_pubkey: ctx.accounts.liquidity_mint_account.key(),
-            mint_decimals: ctx.accounts.liquidity_mint_account.decimals,
-            supply_pubkey: ctx.accounts.liquidity_reserve_account.key(),
-            pyth_oracle_feed_id: feed_id,
-            market_price: market_price as u128,
-            smoothed_market_price: market_price as u128,
-        }),
-        collateral: ReserveCollateral::new(NewReserveCollateralParams {
-            mint_pubkey: ctx.accounts.collateral_mint_account.key(),
-            supply_pubkey: ctx.accounts.collateral_reserve_account.key(),
-        }),
-        config,
-        rate_limiter_config: RateLimiterConfig::default(),
-        key,
-    });
+    // msg!("Depositing liquidity");
+    // let collateral_amount = reserve.deposit_liquidity(liquidity_amount)?;
+    // msg!("Liquidity deposited: {}", collateral_amount);
 
-    let collateral_amount = reserve.deposit_liquidity(liquidity_amount)?;
+    // msg!("Transferring liquidity to reserve account");
+    // transfer_token_to(
+    //     token_program.to_account_info(),
+    //     ctx.accounts.liquidity_user_account.to_account_info(),
+    //     ctx.accounts.liquidity_reserve_account.to_account_info(),
+    //     signer.to_account_info(),
+    //     liquidity_amount,
+    // )?;
+    // msg!("Liquidity transferred");
 
-    //step 1
-    //transfer the liquidity_amount from the signer's token account to the liquidity reserve account
-    transfer_token_to(
-        token_program.to_account_info(),
-        ctx.accounts.liquidity_user_account.to_account_info(),
-        ctx.accounts.liquidity_reserve_account.to_account_info(),
-        signer.to_account_info(),
-        liquidity_amount,
-    )?;
+    // msg!("Minting collateral tokens");
+    // let seeds: &[&[u8]] = &[
+    //     &signer.key.to_bytes(),
+    //     &[lending_market.bump_seed],
+    // ];
+    // mint_tokens(
+    //     token_program.to_account_info(),
+    //     ctx.accounts.collateral_mint_account.to_account_info(),
+    //     ctx.accounts.collateral_user_account.to_account_info(),
+    //     ctx.accounts.lending_market.to_account_info(), // Correct authority
+    //     collateral_amount,
+    //     seeds, // Correct signer seeds
+    // )?;
+    // msg!("Collateral tokens minted");
 
-    //step 2
-    //mint the collateral mint to the collateral user account
-    //need authority_signer_seeds because the authority is the lending market
-    mint_tokens(
-        token_program.to_account_info(), // Correct
-        ctx.accounts.collateral_mint_account.to_account_info(),
-        ctx.accounts.collateral_user_account.to_account_info(),
-        signer.to_account_info(), // Also correct
-        collateral_amount,
-        &[&[&signer.key.to_bytes().as_ref()]],
-    )?;
-
+    msg!("InitReserve completed successfully");
     Ok(())
 }
