@@ -37,4 +37,7 @@ pub enum ErrorCode {
 
     #[msg("Invalid Config")]
     InvalidConfig,
+
+    #[msg("Invalid Lending Market Account")]
+    InvalidLendingMarketAccount,
 }

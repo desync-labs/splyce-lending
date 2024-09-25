@@ -30,6 +30,7 @@ pub mod splyce_lending {
         rate_limiter_config: RateLimiterConfig,
         whitelisted_liquidator: Option<Pubkey>,
         risk_authority: Pubkey,
+        original_owner: Pubkey,
     ) -> Result<()> {
         msg!("Instruction: set_lending_market_owner_and_config");
         handle_set_lending_market_owner_and_config(
@@ -38,6 +39,7 @@ pub mod splyce_lending {
             rate_limiter_config,
             whitelisted_liquidator,
             risk_authority,
+            original_owner
         )
     }
 
