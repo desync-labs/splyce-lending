@@ -30,7 +30,6 @@ impl anchor_lang::Space for RateLimiter {
 
 /// Lending market configuration parameters
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Default, Debug, PartialEq, Eq)]
-// #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RateLimiterConfig {
     /// Rate limiter window size in slots
     pub window_duration: u64, //8 bytes

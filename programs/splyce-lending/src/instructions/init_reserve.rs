@@ -159,7 +159,7 @@ pub fn handle_init_reserve(
     }
 
     msg!("Initializing reserve");
-    reserve.init(InitReserveParams {
+    let params = Box::new(InitReserveParams {
         current_slot: Clock::get()?.slot,
         lending_market: lending_market.key(),
         liquidity: ReserveLiquidity::new(NewReserveLiquidityParams {
@@ -174,10 +174,32 @@ pub fn handle_init_reserve(
             mint_pubkey: ctx.accounts.collateral_mint_account.key(),
             supply_pubkey: ctx.accounts.collateral_reserve_account.key(),
         }),
-        config,
+        // config,
+        config: Box::new(config),
         rate_limiter_config: RateLimiterConfig::default(),
         key,
     });
+    
+    reserve.init(*params);
+    // reserve.init(InitReserveParams {
+    //     current_slot: Clock::get()?.slot,
+    //     lending_market: lending_market.key(),
+    //     liquidity: ReserveLiquidity::new(NewReserveLiquidityParams {
+    //         mint_pubkey: ctx.accounts.liquidity_mint_account.key(),
+    //         mint_decimals: ctx.accounts.liquidity_mint_account.decimals,
+    //         supply_pubkey: ctx.accounts.liquidity_reserve_account.key(),
+    //         pyth_oracle_feed_id: feed_id,
+    //         market_price: market_price as u128,
+    //         smoothed_market_price: market_price as u128,
+    //     }),
+    //     collateral: ReserveCollateral::new(NewReserveCollateralParams {
+    //         mint_pubkey: ctx.accounts.collateral_mint_account.key(),
+    //         supply_pubkey: ctx.accounts.collateral_reserve_account.key(),
+    //     }),
+    //     config,
+    //     rate_limiter_config: RateLimiterConfig::default(),
+    //     key,
+    // });
     // msg!("Reserve initialized");
 
     // msg!("Depositing liquidity");

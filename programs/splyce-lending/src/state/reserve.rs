@@ -50,7 +50,7 @@ pub struct Reserve {
     /// Reserve collateral
     pub collateral: ReserveCollateral,
     /// Reserve configuration values
-    pub config: ReserveConfig,
+    pub config: Box<ReserveConfig>,
     /// Outflow Rate Limiter (denominated in tokens)
     pub rate_limiter: RateLimiter,
     /// Attributed borrows in USD
@@ -66,7 +66,8 @@ impl anchor_lang::Space for Reserve {
         + 32 // lending_market Pubkey
         + ReserveLiquidity::INIT_SPACE
         + ReserveCollateral::INIT_SPACE
-        + ReserveConfig::INIT_SPACE
+        // + ReserveConfig::INIT_SPACE
+        + 8   // Pointer size for Box<ReserveConfig>
         + RateLimiter::INIT_SPACE
         + 16 // attributed_borrow_value: u128
         + 8; // key: u64
@@ -85,12 +86,17 @@ impl Reserve {
         self.version = PROGRAM_VERSION;
         self.last_update = LastUpdate::new(params.current_slot);
         self.lending_market = params.lending_market;
+        // msg!("Set lending market");
         self.liquidity = params.liquidity;
+        // msg!("Set liquidity");
         self.collateral = params.collateral;
-        self.config = params.config;
-        self.rate_limiter = RateLimiter::new(params.rate_limiter_config, params.current_slot);
-        self.attributed_borrow_value = 0u128;
-        self.key = params.key;
+        msg!("Set collateral");
+        // self.config = params.config.clone(); //<-  This is the line that causes the stack issue
+        self.config = Box::new(*params.config);
+        msg!("Set config");
+        // self.rate_limiter = RateLimiter::new(params.rate_limiter_config.clone(), params.current_slot);
+        // self.attributed_borrow_value = 0u128;
+        // self.key = params.key;
     }
 
     /// get borrow weight. Guaranteed to be greater than 1
@@ -570,6 +576,7 @@ impl Reserve {
 }
 
 /// Initialize a reserve
+#[derive(Default)]
 pub struct InitReserveParams {
     /// Last slot when supply and rates updated
     pub current_slot: Slot,
@@ -580,7 +587,8 @@ pub struct InitReserveParams {
     /// Reserve collateral
     pub collateral: ReserveCollateral,
     /// Reserve configuration values
-    pub config: ReserveConfig,
+    // pub config: ReserveConfig,
+    pub config: Box<ReserveConfig>,
     /// rate limiter config
     pub rate_limiter_config: RateLimiterConfig,
     /// key for creating PDA
@@ -971,7 +979,7 @@ pub struct NewReserveCollateralParams {
 }
 
 /// Collateral exchange rate
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct CollateralExchangeRate(u128);
 
 impl CollateralExchangeRate {
@@ -1012,7 +1020,7 @@ impl CollateralExchangeRate {
 
 
 /// Reserve configuration values
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct ReserveConfig {
     /// Optimal utilization rate, as a percentage
     pub optimal_utilization_rate: u8,
@@ -1179,7 +1187,7 @@ pub fn validate_reserve_config(config: ReserveConfig) -> Result<()> {
     Ok(())
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default, PartialEq, Eq, FromPrimitive)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone,  Debug, Default, PartialEq, Eq, FromPrimitive)]
 /// Asset Type of the reserve
 pub enum ReserveType {
     #[default]
@@ -1227,7 +1235,7 @@ impl From<ErrorCode> for ProgramError {
 /// These exist separately from interest accrual fees, and are specifically for the program owner
 /// and frontend host. The fees are paid out as a percentage of liquidity token amounts during
 /// repayments and liquidations.
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct ReserveFees {
     /// Fee assessed on `BorrowObligationLiquidity`, expressed as a Wad.
     /// Must be between 0 and 10^18, such that 10^18 = 1.  A few examples for
