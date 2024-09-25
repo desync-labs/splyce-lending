@@ -40,4 +40,7 @@ pub enum ErrorCode {
 
     #[msg("Invalid Lending Market Account")]
     InvalidLendingMarketAccount,
+
+    #[msg("Debug")]
+    Here,
 }

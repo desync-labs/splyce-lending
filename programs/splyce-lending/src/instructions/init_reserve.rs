@@ -27,7 +27,7 @@ pub struct ReserveInit<'info> {
     )]
     pub reserve: Box<Account<'info, Reserve>>,
 
-    pub lending_market: Box<Account<'info, LendingMarket>>,
+    pub lending_market: Account<'info, LendingMarket>,
 
     #[account(
         init,
@@ -38,7 +38,7 @@ pub struct ReserveInit<'info> {
         mint::decimals = 9,
         mint::authority = lending_market,
     )]
-    pub collateral_mint_account: Box<Account<'info, Mint>>, //what to give as LP token
+    pub collateral_mint_account: Account<'info, Mint>, //what to give as LP token
 
     #[account(
         init,
@@ -48,7 +48,7 @@ pub struct ReserveInit<'info> {
         // token::mint = collateral_mint_account,
         // token::authority = lending_market,
     )]
-    pub collateral_reserve_account: Box<Account<'info, TokenAccount>>, //where the LP token sits in the reserve
+    pub collateral_reserve_account: Account<'info, TokenAccount>, //where the LP token sits in the reserve
 
     #[account(
         init,
@@ -59,9 +59,9 @@ pub struct ReserveInit<'info> {
         // token::mint = collateral_mint_account,
         // token::authority = signer,
     )]
-    pub collateral_user_account: Box<Account<'info, TokenAccount>>, //where the LP token sits in the user's account, where the LP token gets minted to
+    pub collateral_user_account: Account<'info, TokenAccount>, //where the LP token sits in the user's account, where the LP token gets minted to
 
-    pub liquidity_mint_account: Box<Account<'info, Mint>>, //what is being deposited. e.a. WSOL
+    pub liquidity_mint_account: Account<'info, Mint>, //what is being deposited. e.a. WSOL
 
     #[account(
         init, //TODO: research init_if_needed and change to it if needed
@@ -74,7 +74,7 @@ pub struct ReserveInit<'info> {
         associated_token::mint = liquidity_mint_account,
         associated_token::authority = lending_market,   
     )]
-    pub liquidity_reserve_account: Box<Account<'info, TokenAccount>>, //where the WSOL sits in the reserve, destination of the deposit
+    pub liquidity_reserve_account: Account<'info, TokenAccount>, //where the WSOL sits in the reserve, destination of the deposit
 
     #[account(
         init,//TODO: research init_if_needed and change to it if needed
@@ -87,9 +87,9 @@ pub struct ReserveInit<'info> {
         associated_token::mint = liquidity_mint_account,
         associated_token::authority = fee_account_owner,
     )]
-    pub liquidity_fee_account: Box<Account<'info, TokenAccount>>, //where the reserve fees are sent to
+    pub liquidity_fee_account: Account<'info, TokenAccount>, //where the reserve fees are sent to
 
-    pub liquidity_user_account: Box<Account<'info, TokenAccount>>, //where the WSOL sits in the user's account, source of the deposit
+    pub liquidity_user_account: Account<'info, TokenAccount>, //where the WSOL sits in the user's account, source of the deposit
 
     #[account(mut)]
     pub signer: Signer<'info>,
@@ -105,7 +105,7 @@ pub struct ReserveInit<'info> {
 
     pub rent: Sysvar<'info, Rent>,
 
-    pub mock_pyth_feed: Box<Account<'info, MockPythPriceFeed>>,
+    pub mock_pyth_feed: Account<'info, MockPythPriceFeed>,
 }
 
 pub fn handle_init_reserve(
@@ -176,12 +176,12 @@ pub fn handle_init_reserve(
         }),
         config,
         rate_limiter_config: RateLimiterConfig::default(),
-        // key,
+        key,
     });
-    // msg!("Reserve initialized");
+    msg!("Reserve initialized");
 
-    // msg!("Depositing liquidity");
-    // let collateral_amount = reserve.deposit_liquidity(liquidity_amount)?;
+    msg!("Depositing liquidity");
+    let collateral_amount = reserve.deposit_liquidity(liquidity_amount)?;
     // msg!("Liquidity deposited: {}", collateral_amount);
 
     // msg!("Transferring liquidity to reserve account");
