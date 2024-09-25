@@ -176,7 +176,7 @@ pub fn handle_init_reserve(
         }),
         config,
         rate_limiter_config: RateLimiterConfig::default(),
-        key,
+        // key,
     });
     // msg!("Reserve initialized");
 

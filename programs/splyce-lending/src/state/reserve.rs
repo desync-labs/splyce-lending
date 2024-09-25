@@ -87,10 +87,11 @@ impl Reserve {
         self.lending_market = params.lending_market;
         self.liquidity = params.liquidity;
         self.collateral = params.collateral;
-        self.config = params.config;
+        self.config = params.config; //<- line that causes issue
+        // msg!("Init reserve, config");
         self.rate_limiter = RateLimiter::new(params.rate_limiter_config, params.current_slot);
         self.attributed_borrow_value = 0u128;
-        self.key = params.key;
+        // self.key = params.key;
     }
 
     /// get borrow weight. Guaranteed to be greater than 1
@@ -583,8 +584,8 @@ pub struct InitReserveParams {
     pub config: ReserveConfig,
     /// rate limiter config
     pub rate_limiter_config: RateLimiterConfig,
-    /// key for creating PDA
-    pub key: u64,
+    // key for creating PDA
+    // pub key: u64,
 }
 
 /// Calculate borrow result
