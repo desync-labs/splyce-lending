@@ -59,9 +59,17 @@ pub struct Reserve {
     pub key: u64,
 }
 // 
-// TODO, calculate space and define it here
 impl anchor_lang::Space for Reserve {
-    const INIT_SPACE: usize = 8 + LastUpdate::INIT_SPACE + 32 + ReserveLiquidity::INIT_SPACE + ReserveCollateral::INIT_SPACE + ReserveConfig::INIT_SPACE + RateLimiter::INIT_SPACE + 16;
+    const INIT_SPACE: usize = 8  // Discriminator
+        + 1  // version
+        + LastUpdate::INIT_SPACE
+        + 32 // lending_market Pubkey
+        + ReserveLiquidity::INIT_SPACE
+        + ReserveCollateral::INIT_SPACE
+        + ReserveConfig::INIT_SPACE
+        + RateLimiter::INIT_SPACE
+        + 16 // attributed_borrow_value: u128
+        + 8; // key: u64
 }
 
 impl Reserve {
@@ -656,7 +664,8 @@ pub struct ReserveLiquidity {
 
 // TODO, calculate space and define it here
 impl anchor_lang::Space for ReserveLiquidity {
-    const INIT_SPACE: usize = 234;
+    // const INIT_SPACE: usize = 234;
+    const INIT_SPACE: usize = 32 + 1 + 32 + 32 + 8 + 16 + 16 + 16 + 16 + 16 + 1 + 16; // Total: 190 bytes
 }
 
 impl ReserveLiquidity {
@@ -903,7 +912,8 @@ pub struct ReserveCollateral {
 
 // TODO, calculate space and define it here
 impl anchor_lang::Space for ReserveCollateral {
-    const INIT_SPACE: usize = 8 + 32 + 8 + 32;
+    // const INIT_SPACE: usize = 8 + 32 + 8 + 32;
+    const INIT_SPACE: usize = 32 + 8 + 32; // Total: 72 bytes
 }
 
 impl ReserveCollateral {
@@ -1060,7 +1070,8 @@ pub struct ReserveConfig {
 // TODO, calculate space and define it here
 impl anchor_lang::Space for ReserveConfig {
     // const INIT_SPACE: usize = 143 + ReserveFees::INIT_SPACE + ReserveType::INIT_SPACE;
-    const INIT_SPACE: usize = 190; // Corrected size
+    // const INIT_SPACE: usize = 190; // Corrected size
+    const INIT_SPACE: usize = 165;
 }
 
 /// validates reserve configs

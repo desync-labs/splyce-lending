@@ -21,11 +21,11 @@ pub struct RateLimiter {
 }
 
 impl RateLimiter {
-    const LEN: usize = 8 + RateLimiterConfig::LEN + 16 + 8 + 16;
+    const LEN: usize = RateLimiterConfig::LEN + 16 + 8 + 16;
 }
 
 impl anchor_lang::Space for RateLimiter {
-    const INIT_SPACE: usize = 8 + RateLimiter::LEN; // 8 bytes for the account discriminator in case it may be used solo
+    const INIT_SPACE: usize = RateLimiter::LEN;
 }
 
 /// Lending market configuration parameters

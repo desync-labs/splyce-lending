@@ -7,7 +7,7 @@ use anchor_spl::associated_token::AssociatedToken; // Import AssociatedToken
 
 use std::mem::size_of;
 
-/// Lending market context
+/// Reserve context
 #[derive(Accounts)]
 #[instruction(key: u64)]
 pub struct ReserveInit<'info> {
@@ -16,6 +16,8 @@ pub struct ReserveInit<'info> {
         // space = size_of::<Reserve>(),
         // space = Reserve::INIT_SPACE + 1000000,
         space = Reserve::INIT_SPACE,
+
+        // space = Reserve::INIT_SPACE + 8,
         seeds=[
             b"reserve".as_ref(), 
             // &key.to_le_bytes().as_ref(), //TODO investigate why this is different from the client
@@ -92,9 +94,6 @@ pub struct ReserveInit<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
     
-    // /// CHECK
-    // pub fee_account_owner: AccountInfo<'info>,
-
     #[account(mut)]
     pub fee_account_owner: Signer<'info>,
     
@@ -130,55 +129,55 @@ pub fn handle_init_reserve(
 
     msg!("Checking lending market ownership");
     //log signer for debugging
-    msg!("Signer: {:?}", signer.key());
+    // msg!("Signer: {:?}", signer.key());
     //log lending_market.owner
-    msg!("Lending Market Owner: {:?}", lending_market.owner);
+    // msg!("Lending Market Owner: {:?}", lending_market.owner);
     require!(lending_market.owner == signer.key(), ErrorCode::Unauthorized);
 
-    // msg!("Deriving lending_market PDA and verifying bump seed");
-    // let (expected_pda, expected_bump) = Pubkey::find_program_address(
-    //     &[&signer.key.to_bytes()],
-    //     program_id
-    // );
-    // require!(
-    //     expected_pda == lending_market.key(),
-    //     ErrorCode::InvalidArgument
-    // );
-    // require!(
-    //     expected_bump == lending_market.bump_seed,
-    //     ErrorCode::InvalidArgument
-    // );
+    msg!("Deriving lending_market PDA and verifying bump seed");
+    let (expected_pda, expected_bump) = Pubkey::find_program_address(
+        &[&signer.key.to_bytes()],
+        program_id
+    );
+    require!(
+        expected_pda == lending_market.key(),
+        ErrorCode::InvalidArgument
+    );
+    require!(
+        expected_bump == lending_market.bump_seed,
+        ErrorCode::InvalidArgument
+    );
 
-    // msg!("Fetching market price");
-    // let (mut market_price, mut expo) = (0, 0);
-    // if is_test {
-    //     (market_price, expo) = ctx.accounts.mock_pyth_feed.get_price();
-    //     msg!("Test mode: Market price fetched as {}", market_price);
-    // } else {
-    //     // TODO: Implement mainnet/testnet price fetching
-    //     msg!("Mainnet/Testnet mode: Market price fetching not implemented");
-    // }
+    msg!("Fetching market price");
+    let (mut market_price, mut expo) = (0, 0);
+    if is_test {
+        (market_price, expo) = ctx.accounts.mock_pyth_feed.get_price();
+        msg!("Test mode: Market price fetched as {}", market_price);
+    } else {
+        // TODO: Implement mainnet/testnet price fetching
+        msg!("Mainnet/Testnet mode: Market price fetching not implemented");
+    }
 
-    // msg!("Initializing reserve");
-    // reserve.init(InitReserveParams {
-    //     current_slot: Clock::get()?.slot,
-    //     lending_market: lending_market.key(),
-    //     liquidity: ReserveLiquidity::new(NewReserveLiquidityParams {
-    //         mint_pubkey: ctx.accounts.liquidity_mint_account.key(),
-    //         mint_decimals: ctx.accounts.liquidity_mint_account.decimals,
-    //         supply_pubkey: ctx.accounts.liquidity_reserve_account.key(),
-    //         pyth_oracle_feed_id: feed_id,
-    //         market_price: market_price as u128,
-    //         smoothed_market_price: market_price as u128,
-    //     }),
-    //     collateral: ReserveCollateral::new(NewReserveCollateralParams {
-    //         mint_pubkey: ctx.accounts.collateral_mint_account.key(),
-    //         supply_pubkey: ctx.accounts.collateral_reserve_account.key(),
-    //     }),
-    //     config,
-    //     rate_limiter_config: RateLimiterConfig::default(),
-    //     key,
-    // });
+    msg!("Initializing reserve");
+    reserve.init(InitReserveParams {
+        current_slot: Clock::get()?.slot,
+        lending_market: lending_market.key(),
+        liquidity: ReserveLiquidity::new(NewReserveLiquidityParams {
+            mint_pubkey: ctx.accounts.liquidity_mint_account.key(),
+            mint_decimals: ctx.accounts.liquidity_mint_account.decimals,
+            supply_pubkey: ctx.accounts.liquidity_reserve_account.key(),
+            pyth_oracle_feed_id: feed_id,
+            market_price: market_price as u128,
+            smoothed_market_price: market_price as u128,
+        }),
+        collateral: ReserveCollateral::new(NewReserveCollateralParams {
+            mint_pubkey: ctx.accounts.collateral_mint_account.key(),
+            supply_pubkey: ctx.accounts.collateral_reserve_account.key(),
+        }),
+        config,
+        rate_limiter_config: RateLimiterConfig::default(),
+        key,
+    });
     // msg!("Reserve initialized");
 
     // msg!("Depositing liquidity");
@@ -210,6 +209,6 @@ pub fn handle_init_reserve(
     // )?;
     // msg!("Collateral tokens minted");
 
-    msg!("InitReserve completed successfully");
+    // msg!("InitReserve completed successfully");
     Ok(())
 }
