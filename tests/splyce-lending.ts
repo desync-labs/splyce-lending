@@ -129,7 +129,8 @@ describe("splyce-lending", () => {
         newOwner.publicKey,
         rateLimiterConfig,
         liquidator.publicKey,
-        riskAuthority.publicKey
+        riskAuthority.publicKey,
+        payer // orginal owner
       )
       .accounts({
         lendingMarket: lendingMarketPDA,
@@ -201,5 +202,31 @@ describe("splyce-lending", () => {
       riskAuthority.publicKey.toBase58(),
       "Risk authority should be the newly set risk authority"
     );
+    
+    const tx2 = await program.methods
+    .setLendingMarketOwnerAndConfig(
+      payer,
+      rateLimiterConfig,
+      liquidator.publicKey,
+      riskAuthority.publicKey,
+      payer // orginal owner
+    )
+    .accounts({
+      lendingMarket: lendingMarketPDA,
+      signer: newOwner.publicKey,
+    })
+    .signers([newOwner])
+    .rpc();
+
+    const lendingMarketAccount2 = await program.account.lendingMarket.fetch(
+      lendingMarketPDA
+    );
+    // Assert owner public key is the new owner
+    assert.equal(
+      lendingMarketAccount2.owner.toBase58(),
+      payer.toBase58(),
+      "Owner should be set back to the original owner public key"
+    );
+    
   });
 });

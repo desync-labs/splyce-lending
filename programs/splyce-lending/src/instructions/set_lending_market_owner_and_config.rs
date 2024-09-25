@@ -4,12 +4,9 @@ use anchor_lang::prelude::*;
 
 /// Lending market context
 #[derive(Accounts)]
+#[instruction(original_owner: Pubkey)]
 pub struct LendingMarketSet<'info> {
-    #[account(mut,
-        seeds=[
-            &signer.key.to_bytes().as_ref()
-        ],
-        bump)]
+    #[account(mut)]
     pub lending_market: Account<'info, LendingMarket>,
 
     #[account(mut)]
@@ -22,12 +19,29 @@ pub fn handle_set_lending_market_owner_and_config(
     rate_limiter_config: RateLimiterConfig,
     whitelisted_liquidator: Option<Pubkey>,
     risk_authority: Pubkey,
+    original_owner: Pubkey,
 ) -> Result<()> {
     let lending_market = &mut ctx.accounts.lending_market;
     let signer = &mut ctx.accounts.signer;
+    let program_id = ctx.program_id;
 
     require!(
         &signer.key() == &lending_market.owner,
+        ErrorCode::Unauthorized
+    );
+
+    let (expected_pda, _bump_seed) = Pubkey::find_program_address(
+        &[original_owner.as_ref()],
+        program_id,
+    );
+
+    require!(
+        lending_market.key() == expected_pda,
+        ErrorCode::InvalidLendingMarketAccount
+    );
+
+    require!(
+        signer.key() == lending_market.owner,
         ErrorCode::Unauthorized
     );
 

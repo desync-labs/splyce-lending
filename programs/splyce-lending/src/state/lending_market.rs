@@ -10,6 +10,8 @@ pub struct LendingMarket {
     pub version: u8,
     /// Bump seed for derived authority address
     pub bump_seed: u8,
+    /// Original owner of the lending market
+    pub original_owner: Pubkey,
     /// Owner authority which can add new reserves
     pub owner: Pubkey,
     /// Currency market prices are quoted in
@@ -37,6 +39,7 @@ impl LendingMarket {
     pub fn init(&mut self, params: InitLendingMarketParams) {
         self.version = PROGRAM_VERSION;
         self.bump_seed = params.bump_seed;
+        self.original_owner = params.owner;
         self.owner = params.owner;
         self.quote_currency = params.quote_currency;
         self.token_program_id = params.token_program_id;

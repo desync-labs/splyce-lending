@@ -22,4 +22,7 @@ pub enum ErrorCode {
 
     #[msg("Slot Less Than Window Start")]
     SlotLessThanWindowStart,
+
+    #[msg("Invalid Lending Market Account")]
+    InvalidLendingMarketAccount,
 }
