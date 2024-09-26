@@ -195,21 +195,21 @@ pub fn handle_init_reserve(
     )?;
     msg!("Liquidity transferred");
 
-    // msg!("Minting collateral tokens");
-    // let seeds: &[&[u8]] = &[
-    //     &signer.key.to_bytes(),
-    //     &[lending_market.bump_seed],
-    // ];
-    // mint_tokens(
-    //     token_program.to_account_info(),
-    //     ctx.accounts.collateral_mint_account.to_account_info(),
-    //     ctx.accounts.collateral_user_account.to_account_info(),
-    //     ctx.accounts.lending_market.to_account_info(), // Correct authority
-    //     collateral_amount,
-    //     seeds, // Correct signer seeds
-    // )?;
-    // msg!("Collateral tokens minted");
+    msg!("Minting collateral tokens");
+    let seeds: &[&[u8]] = &[
+        &signer.key.to_bytes(),
+        &[lending_market.bump_seed],
+    ];
+    mint_tokens(
+        token_program.to_account_info(),
+        ctx.accounts.collateral_mint_account.to_account_info(),
+        ctx.accounts.collateral_user_account.to_account_info(),
+        ctx.accounts.lending_market.to_account_info(), // Correct authority
+        collateral_amount,
+        seeds, // Correct signer seeds
+    )?;
+    msg!("Collateral tokens minted");
 
-    // msg!("InitReserve completed successfully");
+    msg!("InitReserve completed successfully");
     Ok(())
 }

@@ -373,28 +373,30 @@ describe("splyce-lending", () => {
   it("init_reserve", async () => {
     try {
       // 1) Check SOL balance before airdrop
-      const balanceBefore = await provider.connection.getBalance(provider.wallet.publicKey);
-      console.log("Balance before airdrop:", balanceBefore / LAMPORTS_PER_SOL, "SOL");
+      const balanceBeforeAirdrop = await provider.connection.getBalance(provider.wallet.publicKey);
+      console.log("Balance before airdrop:", balanceBeforeAirdrop / LAMPORTS_PER_SOL, "SOL");
   
       // 2) Airdrop SOL (ensure sufficient SOL for wrapping and transactions)
       const airdropAmount = 2; // Airdrop 2 SOL to cover wrapping and rent
       await airdropSol(provider.wallet.publicKey, airdropAmount);
   
       // 3) Check SOL balance after airdrop
-      const balanceAfter = await provider.connection.getBalance(provider.wallet.publicKey);
-      console.log("Balance after airdrop:", balanceAfter / LAMPORTS_PER_SOL, "SOL");
+      const balanceAfterAirdrop = await provider.connection.getBalance(provider.wallet.publicKey);
+      console.log("Balance after airdrop:", balanceAfterAirdrop / LAMPORTS_PER_SOL, "SOL");
   
       // 4) Wrap SOL into WSOL
       const wrapAmount = 1; // Amount of SOL to wrap
       const wsolTokenAccount = await wrapSOL(provider, wrapAmount);
   
       // 5) Verify WSOL balance
-      const tokenAccountInfo = await provider.connection.getTokenAccountBalance(wsolTokenAccount);
-      console.log(`WSOL Token Account Balance: ${tokenAccountInfo.value.uiAmount} WSOL`);
+      const tokenAccountInfoBefore = await provider.connection.getTokenAccountBalance(wsolTokenAccount);
+      console.log(`WSOL Token Account Balance before initReserve: ${tokenAccountInfoBefore.value.uiAmount} WSOL`);
   
-      assert.equal(tokenAccountInfo.value.uiAmount, wrapAmount, "WSOL balance should match the wrapped amount");
-  
-      console.log("Token Account Info:", tokenAccountInfo);
+      assert.equal(
+        tokenAccountInfoBefore.value.uiAmount,
+        wrapAmount,
+        "WSOL balance should match the wrapped amount before initReserve"
+      );
   
       // 6) Init MockPythPriceFeed
       const initialPriceOfSolInLamports = new anchor.BN(100 * LAMPORTS_PER_SOL); // $100
@@ -553,13 +555,14 @@ describe("splyce-lending", () => {
         throw new Error('feedId must be 32 bytes');
       }
   
-      // console.log("collateralReserveAccount", collateralReserveAccount.toBase58());
-      // console.log("collateralUserAccount", collateralUserAccount.toBase58());
-      // console.log("liquidityReserveAccount", liquidityReserveAccount.toBase58());
-      // console.log("liquidityFeeAccount", liquidityFeeAccount.toBase58());
-      // console.log("liquidityUserAccount", liquidityUserAccount.toBase58());
-      // console.log("reservePDA", reservePDA.toBase58());
-      // console.log("lendingMarketPDA", lendingMarketPDA.toBase58());
+      // 8) **Fetch and Store Balances Before initReserve**
+  
+      // Fetch WSOL balance before initReserve
+      const wsolBalanceBeforeInit = await provider.connection.getTokenAccountBalance(liquidityUserAccount);
+      const wsolBalanceBefore = parseFloat(wsolBalanceBeforeInit.value.uiAmountString || "0");
+      console.log(`WSOL Balance before initReserve: ${wsolBalanceBefore} WSOL`);
+  
+      // 9) **Call the `initReserve` Instruction**
   
       // Now, call the instruction to initialize the reserve within try-catch
       const tx = await program.methods
@@ -597,14 +600,42 @@ describe("splyce-lending", () => {
       // If the transaction is successful, you can proceed with further assertions
       console.log("initReserve transaction signature:", tx);
   
-      // Fetch the reserve account and check its fields
+      // 10) **Fetch and Store Balances After initReserve**
+  
+      // Fetch WSOL balance after initReserve
+      const wsolBalanceAfterInit = await provider.connection.getTokenAccountBalance(liquidityUserAccount);
+      const wsolBalanceAfter = parseFloat(wsolBalanceAfterInit.value.uiAmountString || "0");
+      console.log(`WSOL Balance after initReserve: ${wsolBalanceAfter} WSOL`);
+  
+      // Fetch Collateral Token balance after initReserve
+      const collateralBalanceAfterInit = await provider.connection.getTokenAccountBalance(collateralUserAccount);
+      const collateralBalanceAfter = parseFloat(collateralBalanceAfterInit.value.uiAmountString || "0");
+      console.log(`Collateral Token Balance after initReserve: ${collateralBalanceAfter} CTokens`);
+  
+      // 11) **Assert the Balance Changes**
+  
+      // Calculate expected WSOL balance
+      const expectedWsolBalance = wsolBalanceBefore - (liquidityAmount.toNumber() / LAMPORTS_PER_SOL);
+      assert.closeTo(
+        wsolBalanceAfter,
+        expectedWsolBalance,
+        0.0001,
+        `WSOL balance should decrease by ${liquidityAmount.toNumber() / LAMPORTS_PER_SOL} WSOL`
+      );
+  
+      // Fetch the reserve account to determine the collateral amount minted
       const reserveAccount = await program.account.reserve.fetch(reservePDA);
       console.log("Reserve Account:", reserveAccount);
+      const collateralAmountMinted = reserveAccount.collateral.mintTotalSupply.toNumber() / 1e9; // Assuming smoothedMarketPrice reflects the collateral minted in this test
   
-      // Assert that the reserve account has been initialized correctly
-      assert.equal(reserveAccount.version, 1, "Reserve version should be 1");
-      assert.equal(reserveAccount.lendingMarket.toBase58(), lendingMarketPDA.toBase58(), "Lending market should match");
-      assert.equal(reserveAccount.key.toString(), key.toString(), "Reserve key should match");
+      // Calculate expected Collateral Token balance
+      const expectedCollateralBalance = collateralAmountMinted;
+      assert.closeTo(
+        collateralBalanceAfter,
+        expectedCollateralBalance,
+        0.0001,
+        `Collateral Token balance should increase by ${collateralAmountMinted} CTokens`
+      );
   
       // Additional assertions can be added here as needed
   
