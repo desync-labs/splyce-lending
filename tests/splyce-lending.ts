@@ -553,13 +553,13 @@ describe("splyce-lending", () => {
         throw new Error('feedId must be 32 bytes');
       }
   
-      console.log("collateralReserveAccount", collateralReserveAccount.toBase58());
-      console.log("collateralUserAccount", collateralUserAccount.toBase58());
-      console.log("liquidityReserveAccount", liquidityReserveAccount.toBase58());
-      console.log("liquidityFeeAccount", liquidityFeeAccount.toBase58());
-      console.log("liquidityUserAccount", liquidityUserAccount.toBase58());
-      console.log("reservePDA", reservePDA.toBase58());
-      console.log("lendingMarketPDA", lendingMarketPDA.toBase58());
+      // console.log("collateralReserveAccount", collateralReserveAccount.toBase58());
+      // console.log("collateralUserAccount", collateralUserAccount.toBase58());
+      // console.log("liquidityReserveAccount", liquidityReserveAccount.toBase58());
+      // console.log("liquidityFeeAccount", liquidityFeeAccount.toBase58());
+      // console.log("liquidityUserAccount", liquidityUserAccount.toBase58());
+      // console.log("reservePDA", reservePDA.toBase58());
+      // console.log("lendingMarketPDA", lendingMarketPDA.toBase58());
   
       // Now, call the instruction to initialize the reserve within try-catch
       const tx = await program.methods

@@ -89,6 +89,7 @@ pub struct ReserveInit<'info> {
     )]
     pub liquidity_fee_account: Account<'info, TokenAccount>, //where the reserve fees are sent to
 
+    #[account(mut)]
     pub liquidity_user_account: Account<'info, TokenAccount>, //where the WSOL sits in the user's account, source of the deposit
 
     #[account(mut)]
@@ -184,15 +185,15 @@ pub fn handle_init_reserve(
     let collateral_amount = reserve.deposit_liquidity(liquidity_amount)?;
     msg!("Liquidity deposited: {}", collateral_amount);
 
-    // msg!("Transferring liquidity to reserve account");
-    // transfer_token_to(
-    //     token_program.to_account_info(),
-    //     ctx.accounts.liquidity_user_account.to_account_info(),
-    //     ctx.accounts.liquidity_reserve_account.to_account_info(),
-    //     signer.to_account_info(),
-    //     liquidity_amount,
-    // )?;
-    // msg!("Liquidity transferred");
+    msg!("Transferring liquidity to reserve account");
+    transfer_token_to(
+        token_program.to_account_info(),
+        ctx.accounts.liquidity_user_account.to_account_info(),
+        ctx.accounts.liquidity_reserve_account.to_account_info(),
+        signer.to_account_info(),
+        liquidity_amount,
+    )?;
+    msg!("Liquidity transferred");
 
     // msg!("Minting collateral tokens");
     // let seeds: &[&[u8]] = &[
