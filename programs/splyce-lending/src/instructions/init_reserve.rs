@@ -9,18 +9,14 @@ use std::mem::size_of;
 
 /// Reserve context
 #[derive(Accounts)]
-#[instruction(key: u64)]
+#[instruction(liquidity_amount: u64, key: u64)]
 pub struct ReserveInit<'info> {
     #[account(init,
         payer = signer,
-        // space = size_of::<Reserve>(),
-        // space = Reserve::INIT_SPACE + 1000000,
         space = Reserve::INIT_SPACE,
-
-        // space = Reserve::INIT_SPACE + 8,
         seeds=[
             b"reserve".as_ref(), 
-            // &key.to_le_bytes().as_ref(), //TODO investigate why this is different from the client
+            &key.to_le_bytes().as_ref(), //TODO investigate why this is different from the client
             &signer.key.to_bytes().as_ref()
         ],
         bump,
@@ -140,6 +136,7 @@ pub fn handle_init_reserve(
         &[&signer.key.to_bytes()],
         program_id
     );
+
     require!(
         expected_pda == lending_market.key(),
         ErrorCode::InvalidArgument
@@ -148,6 +145,14 @@ pub fn handle_init_reserve(
         expected_bump == lending_market.bump_seed,
         ErrorCode::InvalidArgument
     );
+
+    // For Debugging
+    // let (expected_reserve_pda, expected_bump) = Pubkey::find_program_address(
+    //     &[b"reserve".as_ref(), &key.to_le_bytes().as_ref(), &signer.key.to_bytes().as_ref()],
+    //     program_id
+    // );
+
+    // msg!("Expected Reserve PDA: {:?}", expected_reserve_pda);
 
     msg!("Fetching market price");
     let (mut market_price, mut expo) = (0, 0);

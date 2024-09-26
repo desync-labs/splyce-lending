@@ -445,12 +445,12 @@ describe("splyce-lending", () => {
       const [reservePDA, reserveBump] = await PublicKey.findProgramAddress(
         [
           Buffer.from("reserve"),
-          // key.toArrayLike(Buffer, 'le', 8), // TODO: Investigate why this is different from the program.
+          keyBuffer,
           provider.wallet.publicKey.toBuffer(),
         ],
         program.programId
       );
-  
+
       // Get lendingMarketPDA (from previous test)
       const [lendingMarketPDA, lendingMarketBump] = await PublicKey.findProgramAddress(
         [provider.wallet.publicKey.toBuffer()],
