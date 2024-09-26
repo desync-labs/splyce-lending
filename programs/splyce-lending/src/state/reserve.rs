@@ -229,54 +229,131 @@ impl Reserve {
         let utilization_rate = self.liquidity.utilization_rate()?;
         let optimal_utilization_rate = self.config.optimal_utilization_rate as u128 * PERCENT_SCALER as u128;
         let max_utilization_rate = self.config.max_utilization_rate as u128 * PERCENT_SCALER as u128;
-        
+    
         if utilization_rate <= optimal_utilization_rate {
-            let min_rate = self.config.min_borrow_rate as u128 *  PERCENT_SCALER as u128;
+            let min_rate = self.config.min_borrow_rate as u128 * PERCENT_SCALER as u128;
     
             if optimal_utilization_rate == 0 {
                 return Ok(min_rate);
             }
     
-            let normalized_rate = utilization_rate.checked_div(optimal_utilization_rate)
-                .ok_or(ErrorCode::MathOverflow)?;
-            let rate_range = self.config
-                .optimal_borrow_rate
-                .checked_sub(self.config.min_borrow_rate)
-                .ok_or(ErrorCode::MathOverflow)? as u128 * PERCENT_SCALER as u128;
-    
-            normalized_rate.checked_mul(rate_range)
-                .and_then(|r| r.checked_add(min_rate))
-                .ok_or(ErrorCode::MathOverflow.into())
-        } else if utilization_rate <= max_utilization_rate {
-            let weight = utilization_rate.checked_sub(optimal_utilization_rate)
+            // Calculate normalized_rate = utilization_rate / optimal_utilization_rate
+            // To maintain precision, scale up numerator by WAD
+            let normalized_rate = utilization_rate
+                .checked_mul(WAD as u128)
                 .ok_or(ErrorCode::MathOverflow)?
-                .checked_div(max_utilization_rate.checked_sub(optimal_utilization_rate)
-                .ok_or(ErrorCode::MathOverflow)?)
+                .checked_div(optimal_utilization_rate)
                 .ok_or(ErrorCode::MathOverflow)?;
+    
+            // normalized_rate is now scaled by WAD (1e6)
+    
+            // rate_range = (optimal_borrow_rate - min_borrow_rate) * PERCENT_SCALER
+            let rate_range = (self.config.optimal_borrow_rate as u128)
+                .checked_sub(self.config.min_borrow_rate as u128)
+                .ok_or(ErrorCode::MathOverflow)?
+                .checked_mul(PERCENT_SCALER as u128)
+                .ok_or(ErrorCode::MathOverflow)?;
+    
+            // borrow_rate = normalized_rate * rate_range / WAD + min_rate
+            let temp = normalized_rate
+                .checked_mul(rate_range)
+                .ok_or(ErrorCode::MathOverflow)?
+                .checked_div(WAD as u128)
+                .ok_or(ErrorCode::MathOverflow)?;
+    
+            let borrow_rate = temp
+                .checked_add(min_rate)
+                .ok_or(ErrorCode::MathOverflow)?;
+    
+            Ok(borrow_rate)
+        } else if utilization_rate <= max_utilization_rate {
+            // utilization_rate > optimal_utilization_rate
+            let utilization_diff = utilization_rate
+                .checked_sub(optimal_utilization_rate)
+                .ok_or(ErrorCode::MathOverflow)?;
+    
+            let utilization_range = max_utilization_rate
+                .checked_sub(optimal_utilization_rate)
+                .ok_or(ErrorCode::MathOverflow)?;
+    
+            if utilization_range == 0 {
+                // Avoid division by zero
+                return Err(ErrorCode::InvalidArgument.into());
+            }
+    
+            // weight = (utilization_rate - optimal_utilization_rate) / (max_utilization_rate - optimal_utilization_rate)
+            // Scale up numerator to maintain precision
+            let weight = utilization_diff
+                .checked_mul(WAD as u128)
+                .ok_or(ErrorCode::MathOverflow)?
+                .checked_div(utilization_range)
+                .ok_or(ErrorCode::MathOverflow)?;
+    
+            // weight is scaled by WAD
     
             let optimal_borrow_rate = self.config.optimal_borrow_rate as u128 * PERCENT_SCALER as u128;
             let max_borrow_rate = self.config.max_borrow_rate as u128 * PERCENT_SCALER as u128;
-            let rate_range = max_borrow_rate.checked_sub(optimal_borrow_rate)
+    
+            let rate_range = max_borrow_rate
+                .checked_sub(optimal_borrow_rate)
                 .ok_or(ErrorCode::MathOverflow)?;
     
-            weight.checked_mul(rate_range)
-                .and_then(|r| r.checked_add(optimal_borrow_rate))
-                .ok_or(ErrorCode::MathOverflow.into())
-        } else {
-            let weight = utilization_rate.checked_sub(max_utilization_rate)
+            // borrow_rate = weight * rate_range / WAD + optimal_borrow_rate
+            let temp = weight
+                .checked_mul(rate_range)
                 .ok_or(ErrorCode::MathOverflow)?
-                .checked_div(100u128.checked_sub(self.config.max_utilization_rate as u128)
-                .ok_or(ErrorCode::MathOverflow)?)
+                .checked_div(WAD as u128)
                 .ok_or(ErrorCode::MathOverflow)?;
+    
+            let borrow_rate = temp
+                .checked_add(optimal_borrow_rate)
+                .ok_or(ErrorCode::MathOverflow)?;
+    
+            Ok(borrow_rate)
+        } else {
+            // utilization_rate > max_utilization_rate
+            let utilization_diff = utilization_rate
+                .checked_sub(max_utilization_rate)
+                .ok_or(ErrorCode::MathOverflow)?;
+    
+            let utilization_range = (100u128 * PERCENT_SCALER as u128)
+                .checked_sub(max_utilization_rate)
+                .ok_or(ErrorCode::MathOverflow)?;
+    
+            if utilization_range == 0 {
+                // Avoid division by zero
+                return Err(ErrorCode::InvalidArgument.into());
+            }
+    
+            // weight = (utilization_rate - max_utilization_rate) / (100% - max_utilization_rate)
+            // Scale up numerator to maintain precision
+            let weight = utilization_diff
+                .checked_mul(WAD as u128)
+                .ok_or(ErrorCode::MathOverflow)?
+                .checked_div(utilization_range)
+                .ok_or(ErrorCode::MathOverflow)?;
+    
+            // weight is scaled by WAD
     
             let max_borrow_rate = self.config.max_borrow_rate as u128 * PERCENT_SCALER as u128;
             let super_max_borrow_rate = self.config.super_max_borrow_rate as u128 * PERCENT_SCALER as u128;
-            let rate_range = super_max_borrow_rate.checked_sub(max_borrow_rate.try_into().unwrap())
+    
+            let rate_range = super_max_borrow_rate
+                .checked_sub(max_borrow_rate)
                 .ok_or(ErrorCode::MathOverflow)?;
     
-            weight.checked_mul(rate_range.into())
-                .and_then(|r| r.checked_add(max_borrow_rate))
-                .ok_or(ErrorCode::MathOverflow.into())
+            // borrow_rate = weight * rate_range / WAD + max_borrow_rate
+            let temp = weight
+                .checked_mul(rate_range)
+                .ok_or(ErrorCode::MathOverflow)?
+                .checked_div(WAD as u128)
+                .ok_or(ErrorCode::MathOverflow)?;
+    
+            let borrow_rate = temp
+                .checked_add(max_borrow_rate)
+                .ok_or(ErrorCode::MathOverflow)?;
+    
+            Ok(borrow_rate)
         }
     }
 
@@ -842,41 +919,51 @@ impl ReserveLiquidity {
         let slot_interest_rate = current_borrow_rate
             .checked_div(SLOTS_PER_YEAR.into())
             .ok_or(ErrorCode::MathOverflow)?;
-
-        // Compound the interest over the number of slots elapsed
-        let compounded_interest_rate = 1u128
+    
+        // Since rates are scaled, we need to adjust the calculations
+        let compounded_interest_rate = (WAD as u128)
             .checked_add(slot_interest_rate)
             .ok_or(ErrorCode::MathOverflow)?
             .checked_pow(slots_elapsed as u32)
+            .ok_or(ErrorCode::MathOverflow)?
+            .checked_div((WAD as u128).checked_pow(slots_elapsed as u32).ok_or(ErrorCode::MathOverflow)?)
             .ok_or(ErrorCode::MathOverflow)?;
-
+    
         // Update the cumulative borrow rate with compounded interest
         self.cumulative_borrow_rate_wads = self
             .cumulative_borrow_rate_wads
             .checked_mul(compounded_interest_rate)
+            .ok_or(ErrorCode::MathOverflow)?
+            .checked_div(WAD as u128)
             .ok_or(ErrorCode::MathOverflow)?;
-
+    
         // Calculate the net new debt
-        let net_new_debt = self
-            .borrowed_amount_wads
+        let net_new_debt = self.borrowed_amount_wads
             .checked_mul(compounded_interest_rate)
+            .ok_or(ErrorCode::MathOverflow)?
+            .checked_div(WAD as u128)
             .ok_or(ErrorCode::MathOverflow)?
             .checked_sub(self.borrowed_amount_wads)
             .ok_or(ErrorCode::MathOverflow)?;
-
+    
         // Update accumulated protocol fees with the new debt
-        self.accumulated_protocol_fees_wads = net_new_debt
+        let protocol_fees = net_new_debt
             .checked_mul(take_rate)
             .ok_or(ErrorCode::MathOverflow)?
-            .checked_add(self.accumulated_protocol_fees_wads)
+            .checked_div(WAD as u128)
             .ok_or(ErrorCode::MathOverflow)?;
-
+    
+        self.accumulated_protocol_fees_wads = self
+            .accumulated_protocol_fees_wads
+            .checked_add(protocol_fees)
+            .ok_or(ErrorCode::MathOverflow)?;
+    
         // Update the borrowed amount with the net new debt
         self.borrowed_amount_wads = self
             .borrowed_amount_wads
             .checked_add(net_new_debt)
             .ok_or(ErrorCode::MathOverflow)?;
-
+    
         Ok(())
     }
 }
@@ -951,15 +1038,19 @@ impl ReserveCollateral {
         total_liquidity: u128,
     ) -> Result<CollateralExchangeRate> {
         let rate = if self.mint_total_supply == 0 || total_liquidity == 0 {
-            INITIAL_COLLATERAL_RATE
+            INITIAL_COLLATERAL_RATE as u128
         } else {
             let mint_total_supply = self.mint_total_supply as u128;
-            mint_total_supply
+            let rate = mint_total_supply
+                .checked_mul(WAD as u128)
+                .ok_or(ErrorCode::MathOverflow)?
                 .checked_div(total_liquidity)
-                .ok_or(ErrorCode::MathOverflow)?.try_into().unwrap()
+                .ok_or(ErrorCode::MathOverflow)?;
+
+            rate
         };
 
-        Ok(CollateralExchangeRate(rate.into()))
+        Ok(CollateralExchangeRate(rate))
     }
 }
 
@@ -986,9 +1077,13 @@ impl CollateralExchangeRate {
         &self,
         collateral_amount: u128,
     ) -> Result<u64> {
-        Ok(collateral_amount
-            .checked_div(self.0)
+        let liquidity_amount = collateral_amount
+            .checked_mul(WAD as u128)
             .ok_or(ErrorCode::MathOverflow)?
+            .checked_div(self.0)
+            .ok_or(ErrorCode::MathOverflow)?;
+
+        Ok(liquidity_amount
             .try_into()
             .map_err(|_| ErrorCode::InvalidArgument)?)
     }
@@ -1003,9 +1098,13 @@ impl CollateralExchangeRate {
         &self,
         liquidity_amount: u128,
     ) -> Result<u64> {
-        Ok(liquidity_amount
+        let collateral_amount = liquidity_amount
             .checked_mul(self.0)
             .ok_or(ErrorCode::MathOverflow)?
+            .checked_div(WAD as u128)
+            .ok_or(ErrorCode::MathOverflow)?;
+
+        Ok(collateral_amount
             .try_into()
             .map_err(|_| ErrorCode::InvalidArgument)?)
     }
@@ -1276,65 +1375,6 @@ impl ReserveFees {
         Ok((origination_fee, host_fee))
     }
 
-    // fn calculate_fees(
-    //     &self,
-    //     amount: u128,
-    //     fee_wad: u64,
-    //     fee_calculation: FeeCalculation,
-    // ) -> Result<(u64, u64)> {
-    //     let borrow_fee_rate = fee_wad as u128;
-    //     let host_fee_rate = self.host_fee_percentage as u128;
-
-    //     if borrow_fee_rate > 0 && amount > 0 {
-    //         let need_to_assess_host_fee = host_fee_rate > 0;
-    //         let minimum_fee = if need_to_assess_host_fee {
-    //             2u64 // 1 token to owner, 1 to host
-    //         } else {
-    //             1u64 // 1 token to owner, nothing else
-    //         };
-
-    //         let borrow_fee_amount = match fee_calculation {
-    //             // Calculate fee to be added to borrow: fee = amount * rate
-    //             FeeCalculation::Exclusive => amount
-    //                 .checked_mul(borrow_fee_rate)
-    //                 .ok_or(ErrorCode::MathOverflow)?
-    //                 .checked_div(10u128.pow(18))
-    //                 .ok_or(ErrorCode::MathOverflow)?,
-    //             // Calculate fee to be subtracted from borrow: fee = amount * (rate / (rate + 1))
-    //             FeeCalculation::Inclusive => {
-    //                 let rate = borrow_fee_rate
-    //                     .checked_div(borrow_fee_rate.checked_add(10u128.pow(18)).ok_or(ErrorCode::MathOverflow)?)
-    //                     .ok_or(ErrorCode::MathOverflow)?;
-    //                 amount.checked_mul(rate).ok_or(ErrorCode::MathOverflow)?
-    //             }
-    //         };
-
-    //         let borrow_fee_u128 = borrow_fee_amount.max(minimum_fee as u128);
-    //         if borrow_fee_u128 >= amount {
-    //             msg!("Borrow amount is too small to receive liquidity after fees");
-    //             return Err(ErrorCode::BorrowTooSmall.into());
-    //         }
-
-    //         let borrow_fee = borrow_fee_u128.try_into().map_err(|_| ErrorCode::MathOverflow)?;
-    //         let host_fee = if need_to_assess_host_fee {
-    //             borrow_fee_u128
-    //                 .checked_mul(host_fee_rate)
-    //                 .ok_or(ErrorCode::MathOverflow)?
-    //                 .checked_div(100)
-    //                 .ok_or(ErrorCode::MathOverflow)?
-    //                 .try_into()
-    //                 .map_err(|_| ErrorCode::MathOverflow)?
-    //                 .max(1u64)
-    //         } else {
-    //             0
-    //         };
-
-    //         Ok((borrow_fee, host_fee))
-    //     } else {
-    //         Ok((0, 0))
-    //     }
-    // }
-
     fn calculate_fees(
         &self,
         amount: u128,
@@ -1353,18 +1393,23 @@ impl ReserveFees {
             };
     
             let borrow_fee_amount = match fee_calculation {
-                // Calculate fee to be added to borrow: fee = amount * rate
                 FeeCalculation::Exclusive => amount
                     .checked_mul(borrow_fee_rate)
                     .ok_or(ErrorCode::MathOverflow)?
-                    .checked_div(10u128.pow(18))
+                    .checked_div(WAD as u128)
                     .ok_or(ErrorCode::MathOverflow)?,
-                // Calculate fee to be subtracted from borrow: fee = amount * (rate / (rate + 1))
                 FeeCalculation::Inclusive => {
                     let rate = borrow_fee_rate
-                        .checked_div(borrow_fee_rate.checked_add(10u128.pow(18)).ok_or(ErrorCode::MathOverflow)?)
+                        .checked_mul(WAD as u128)
+                        .ok_or(ErrorCode::MathOverflow)?
+                        .checked_div(borrow_fee_rate.checked_add(WAD as u128).ok_or(ErrorCode::MathOverflow)?)
                         .ok_or(ErrorCode::MathOverflow)?;
-                    amount.checked_mul(rate).ok_or(ErrorCode::MathOverflow)?
+    
+                    amount
+                        .checked_mul(rate)
+                        .ok_or(ErrorCode::MathOverflow)?
+                        .checked_div(WAD as u128)
+                        .ok_or(ErrorCode::MathOverflow)?
                 }
             };
     
@@ -1383,9 +1428,7 @@ impl ReserveFees {
                     .checked_div(100)
                     .ok_or(ErrorCode::MathOverflow)?;
     
-                TryInto::<u64>::try_into(calculated_host_fee) // Directly specify the type here
-                    .map_err(|_| ErrorCode::MathOverflow)?
-                    .max(1u64)
+                calculated_host_fee.try_into().map_err(|_| ErrorCode::MathOverflow)?.max(1u64)
             } else {
                 0
             };
