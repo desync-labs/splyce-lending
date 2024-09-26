@@ -182,7 +182,7 @@ pub fn handle_init_reserve(
 
     msg!("Depositing liquidity");
     let collateral_amount = reserve.deposit_liquidity(liquidity_amount)?;
-    // msg!("Liquidity deposited: {}", collateral_amount);
+    msg!("Liquidity deposited: {}", collateral_amount);
 
     // msg!("Transferring liquidity to reserve account");
     // transfer_token_to(

@@ -3,6 +3,7 @@ use anchor_lang::prelude::*;
 //TODO change error to Anchor error
 use crate::error::ErrorCode;
 use std::result::Result as StdResult; // Alias standard Result to avoid confusion
+use std::convert::TryInto;
 
 use num_derive::FromPrimitive;
 // use num_traits::FromPrimitive;
@@ -1374,7 +1375,6 @@ impl ReserveFees {
             .ok_or(ErrorCode::MathOverflow)?;
         Ok((origination_fee, host_fee))
     }
-
     fn calculate_fees(
         &self,
         amount: u128,
@@ -1383,7 +1383,7 @@ impl ReserveFees {
     ) -> Result<(u64, u64)> {
         let borrow_fee_rate = fee_wad as u128;
         let host_fee_rate = self.host_fee_percentage as u128;
-    
+
         if borrow_fee_rate > 0 && amount > 0 {
             let need_to_assess_host_fee = host_fee_rate > 0;
             let minimum_fee = if need_to_assess_host_fee {
@@ -1391,20 +1391,26 @@ impl ReserveFees {
             } else {
                 1u64 // 1 token to owner, nothing else
             };
-    
+
             let borrow_fee_amount = match fee_calculation {
+                // Calculate fee to be added to borrow: fee = (amount * rate) / WAD
                 FeeCalculation::Exclusive => amount
                     .checked_mul(borrow_fee_rate)
                     .ok_or(ErrorCode::MathOverflow)?
                     .checked_div(WAD as u128)
                     .ok_or(ErrorCode::MathOverflow)?,
+                // Calculate fee to be subtracted from borrow: fee = (amount * (rate / (rate + WAD))) / WAD
                 FeeCalculation::Inclusive => {
                     let rate = borrow_fee_rate
                         .checked_mul(WAD as u128)
                         .ok_or(ErrorCode::MathOverflow)?
-                        .checked_div(borrow_fee_rate.checked_add(WAD as u128).ok_or(ErrorCode::MathOverflow)?)
+                        .checked_div(
+                            borrow_fee_rate
+                                .checked_add(WAD as u128)
+                                .ok_or(ErrorCode::MathOverflow)?,
+                        )
                         .ok_or(ErrorCode::MathOverflow)?;
-    
+
                     amount
                         .checked_mul(rate)
                         .ok_or(ErrorCode::MathOverflow)?
@@ -1412,27 +1418,32 @@ impl ReserveFees {
                         .ok_or(ErrorCode::MathOverflow)?
                 }
             };
-    
+
             let borrow_fee_u128 = borrow_fee_amount.max(minimum_fee as u128);
             if borrow_fee_u128 >= amount {
                 msg!("Borrow amount is too small to receive liquidity after fees");
                 return Err(ErrorCode::BorrowTooSmall.into());
             }
-    
-            let borrow_fee = borrow_fee_u128.try_into().map_err(|_| ErrorCode::MathOverflow)?;
-    
+
+            let borrow_fee = borrow_fee_u128
+                .try_into()
+                .map_err(|_| ErrorCode::MathOverflow)?;
+
             let host_fee = if need_to_assess_host_fee {
                 let calculated_host_fee = borrow_fee_u128
                     .checked_mul(host_fee_rate)
                     .ok_or(ErrorCode::MathOverflow)?
                     .checked_div(100)
                     .ok_or(ErrorCode::MathOverflow)?;
-    
-                calculated_host_fee.try_into().map_err(|_| ErrorCode::MathOverflow)?.max(1u64)
+
+                // Fully qualified syntax specifying u64 as target type
+                <u128 as TryInto<u64>>::try_into(calculated_host_fee)
+                    .map_err(|_| ErrorCode::MathOverflow)?
+                    .max(1u64)
             } else {
                 0
             };
-    
+
             Ok((borrow_fee, host_fee))
         } else {
             Ok((0, 0))
