@@ -11,15 +11,7 @@ use std::mem::size_of;
 #[derive(Accounts)]
 #[instruction(liquidity_amount: u64, key: u64)]
 pub struct ReserveConfigUpdate<'info> {
-    #[account(
-        mut,
-        seeds=[
-            b"reserve".as_ref(), 
-            &key.to_le_bytes().as_ref(),
-            &signer.key.to_bytes().as_ref()
-        ],
-        bump,
-    )]
+    #[account(mut)]
     pub reserve: Box<Account<'info, Reserve>>,
 
     pub lending_market: Account<'info, LendingMarket>,
@@ -48,7 +40,7 @@ pub fn handle_update_reserve_config(
     let program_id = &ctx.program_id;
 
     let (expected_pda, expected_bump) = Pubkey::find_program_address(
-        &[&signer.key.to_bytes()],
+        &[&lending_market.owner.to_bytes()],
         program_id
     );
 

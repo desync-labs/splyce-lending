@@ -658,4 +658,67 @@ describe("splyce-lending", () => {
     }
   });
 
+  it("update_reserve_config as BERNANKE (success case)", async () => {
+    // Derive PDAs
+    const [lendingMarketPDA, lendingMarketBump] = await PublicKey.findProgramAddress(
+      [provider.wallet.publicKey.toBuffer()],
+      program.programId
+    );
+  
+    const key = new anchor.BN(1);
+    const keyBuffer = key.toArrayLike(Buffer, 'le', 8);
+  
+    const [reservePDA, reserveBump] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from("reserve"),
+        keyBuffer,
+        provider.wallet.publicKey.toBuffer(),
+      ],
+      program.programId
+    );
+  
+    // Fetch the reserve account
+    const reserveAccountBefore = await program.account.reserve.fetch(reservePDA);
+    const currentConfig = reserveAccountBefore.config;
+  
+    // Prepare new config with changes allowed for BERNANKE
+    const newConfig = { ...currentConfig };
+    newConfig.fees.borrowFeeWad = new anchor.BN(1000); // Set borrow fee to 0.1%
+    newConfig.protocolLiquidationFee = 5; // Set protocol liquidation fee to 0.5%
+    newConfig.protocolTakeRate = 2; // Set protocol take rate to 2%
+    // Assuming feeReceiver is an existing public key
+    newConfig.feeReceiver = provider.wallet.publicKey;
+  
+    // Prepare rate_limiter_config (no changes)
+    const rateLimiterConfig = reserveAccountBefore.rateLimiter.config;
+  
+    // Call update_reserve_config as BERNANKE
+    await program.methods
+      .initUpdateReserveConfig(
+        newConfig,
+        rateLimiterConfig,
+        true // is_test
+      )
+      .accounts({
+        reserve: reservePDA,
+        lendingMarket: lendingMarketPDA,
+        signer: provider.wallet.publicKey,
+        lendingMarketOwner: provider.wallet.publicKey, // Assuming BERNANKE is not the owner
+        mockPythFeed: reserveAccountBefore.mockPythFeed,
+      })
+      .rpc();
+  
+    // Fetch the reserve account after update
+    const reserveAccountAfter = await program.account.reserve.fetch(reservePDA);
+  
+    // Verify that the config has been updated
+    assert.equal(reserveAccountAfter.config.fees.borrowFeeWad.toString(), newConfig.fees.borrowFeeWad.toString(), "Borrow fee should be updated");
+    assert.equal(reserveAccountAfter.config.protocolLiquidationFee, newConfig.protocolLiquidationFee, "Protocol liquidation fee should be updated");
+    assert.equal(reserveAccountAfter.config.protocolTakeRate, newConfig.protocolTakeRate, "Protocol take rate should be updated");
+    assert.equal(reserveAccountAfter.config.feeReceiver.toBase58(), newConfig.feeReceiver.toBase58(), "Fee receiver should be updated");
+  
+    // Verify that 'stale' is set to true
+    assert.isTrue(reserveAccountAfter.lastUpdate.stale, "Reserve last update should be marked as stale");
+  });
+
 });
