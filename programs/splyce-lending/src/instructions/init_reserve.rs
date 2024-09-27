@@ -140,11 +140,11 @@ pub fn handle_init_reserve(
 
     require!(
         expected_pda == lending_market.key(),
-        ErrorCode::InvalidArgument
+        ErrorCode::SignerNotLendingMarketOwner
     );
     require!(
         expected_bump == lending_market.bump_seed,
-        ErrorCode::InvalidArgument
+        ErrorCode::InvalidBumpSeed
     );
 
     // For Debugging
@@ -185,6 +185,13 @@ pub fn handle_init_reserve(
         rate_limiter_config: RateLimiterConfig::default(),
         key,
     });
+
+    if is_test {
+        //update mock pyth feed
+        reserve.mock_pyth_feed = ctx.accounts.mock_pyth_feed.key();
+    };
+
+
     msg!("Reserve initialized");
 
     msg!("Depositing liquidity");

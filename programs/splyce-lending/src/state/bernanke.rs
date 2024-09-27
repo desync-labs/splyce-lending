@@ -1,0 +1,1 @@
+pub const BERNANKE: &str = "Dm2jcWvX9RstLCL7aGwSDqFj7AY23aLB2otTnpEJeHeU"; // The helicopter money printers

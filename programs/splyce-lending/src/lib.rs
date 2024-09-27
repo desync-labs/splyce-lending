@@ -62,4 +62,14 @@ pub mod splyce_lending {
         msg!("Instruction: init_mock_pyth_feed");
         handle_init_mock_pyth_feed(ctx, initial_price, expo)
     }
+
+    pub fn init_update_reserve_config(
+        ctx: Context<ReserveConfigUpdate>,
+        config: ReserveConfig,
+        rate_limiter_config: RateLimiterConfig,
+        is_test: bool,
+    ) -> Result<()> {
+        msg!("Instruction: update_reserve_config");
+        handle_update_reserve_config(ctx, config, rate_limiter_config, is_test)
+    }
 }

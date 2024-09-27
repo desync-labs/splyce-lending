@@ -58,6 +58,8 @@ pub struct Reserve {
     pub attributed_borrow_value: u128,
     /// Key for creating PDA
     pub key: u64,
+    /// Mock pyth feed
+    pub mock_pyth_feed: Pubkey,
 }
 // 
 impl anchor_lang::Space for Reserve {
@@ -70,7 +72,8 @@ impl anchor_lang::Space for Reserve {
         + ReserveConfig::INIT_SPACE
         + RateLimiter::INIT_SPACE
         + 16 // attributed_borrow_value: u128
-        + 8; // key: u64
+        + 8 // key: u64
+        + MockPythPriceFeed::INIT_SPACE;
 }
 
 impl Reserve {

@@ -41,6 +41,18 @@ pub enum ErrorCode {
     #[msg("Invalid Lending Market Account")]
     InvalidLendingMarketAccount,
 
+    #[msg("Invalid Reserve Account")]
+    SignerNotLendingMarketOwner,
+
+    #[msg("Invalid Bump Seed")]
+    InvalidBumpSeed,
+
+    #[msg("Reserve belongs to a different lending market")]
+    InvalidReserveLendingMarketMatch,
+
+    #[msg("Signer is not Bernanke")]
+    NotBernanke,
+
     #[msg("Debug")]
     Here,
 }
