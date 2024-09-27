@@ -1178,6 +1178,7 @@ impl anchor_lang::Space for ReserveConfig {
 /// validates reserve configs
 #[inline(always)]
 pub fn validate_reserve_config(config: ReserveConfig) -> Result<()> {
+    msg!("Validating reserve config");
     if config.optimal_utilization_rate > 100 {
         msg!("Optimal utilization rate must be in range [0, 100]");
         return Err(ErrorCode::InvalidConfig.into());
@@ -1226,7 +1227,7 @@ pub fn validate_reserve_config(config: ReserveConfig) -> Result<()> {
         return Err(ErrorCode::InvalidConfig.into());
     }
     if config.fees.borrow_fee_wad >= WAD {
-        msg!("Borrow fee must be in range [0, 1_000_000_000_000_000_000)");
+        msg!("Borrow fee must be in range [0, 1_000_000)");
         return Err(ErrorCode::InvalidConfig.into());
     }
     if config.fees.host_fee_percentage > 100 {

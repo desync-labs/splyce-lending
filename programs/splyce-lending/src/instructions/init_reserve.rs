@@ -114,6 +114,7 @@ pub fn handle_init_reserve(
     is_test: bool,
 ) -> Result<()> {
     msg!("Starting InitReserve");
+    validate_reserve_config(config)?;
 
     // Validate liquidity amount
     require!(liquidity_amount > 0, ErrorCode::InvalidArgument);
