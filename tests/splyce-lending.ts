@@ -150,6 +150,7 @@ describe("splyce-lending", () => {
   const program = anchor.workspace.SplyceLending as Program<SplyceLending>;
 
   console.log("Client Program ID:", program.programId.toString());
+  let riskAuthorityGlobal;
 
   it("init_lending_market", async () => {
 
@@ -751,6 +752,399 @@ describe("splyce-lending", () => {
   
     // Verify that 'stale' is set to true
     assert.isTrue(reserveAccountAfter.lastUpdate.stale, "Reserve last update should be marked as stale");
+
+    // Return the lending market owner to the original owner
+    const tx2 = await program.methods
+    .setLendingMarketOwnerAndConfig(
+      payer,
+      rateLimiterConfig,
+      liquidator.publicKey,
+      riskAuthority.publicKey,
+      payer // orginal owner
+    )
+    .accounts({
+      lendingMarket: lendingMarketPDA,
+      signer: newOwner.publicKey,
+    })
+    .signers([newOwner])
+    .rpc();
   });
 
+  it("update_reserve_config as BERNANKE and market owner (success)", async () => {
+    // Get the payer account (signer)
+    const payer = provider.wallet.publicKey;
+  
+    // Get the lending market PDA
+    const [lendingMarketPDA, bump] = await PublicKey.findProgramAddress(
+      [provider.wallet.publicKey.toBuffer()],
+      program.programId
+    );
+  
+    // Fetch the reserve PDA
+    const key = new anchor.BN(1);
+    const keyBuffer = key.toArrayLike(Buffer, 'le', 8);
+  
+    const [reservePDA, reserveBump] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from("reserve"),
+        keyBuffer,
+        provider.wallet.publicKey.toBuffer(),
+      ],
+      program.programId
+    );
+  
+    // Fetch the reserve account
+    const reserveAccountBefore = await program.account.reserve.fetch(reservePDA);
+    const currentConfig = reserveAccountBefore.config;
+  
+    // Prepare new config with allowed changes
+    const newConfig = { ...currentConfig };
+    newConfig.fees.borrowFeeWad = new anchor.BN(2000); // Set borrow fee to 0.2%
+    newConfig.protocolLiquidationFee = 10; // Set protocol liquidation fee to 1.0%
+    newConfig.protocolTakeRate = 4; // Set protocol take rate to 2%
+
+          // 6) Init MockPythPriceFeed
+          const initialPriceOfSolInLamports = new anchor.BN(110 * LAMPORTS_PER_SOL); // $100
+          const expo = new anchor.BN(9); // Exponent for price feed
+      
+          // Derive the PDA for the MockPythPriceFeed using the signer's key and initial price
+          const seeds = [
+            provider.wallet.publicKey.toBuffer(),
+            initialPriceOfSolInLamports.toArrayLike(Buffer, "le", 8),
+          ];
+          const [mockPythPriceFeedPDA, bumpMockPyth] = await PublicKey.findProgramAddress(
+            seeds,
+            program.programId
+          );
+      
+          // Initialize the mock Pyth price feed
+          await program.methods
+            .initMockPythFeed(
+              initialPriceOfSolInLamports,
+              expo,
+            )
+            .accounts({
+              mockPythFeed: mockPythPriceFeedPDA,
+              signer: provider.wallet.publicKey,
+              systemProgram: SystemProgram.programId,
+            })
+            .rpc();
+      
+          console.log("Initialized MockPythPriceFeed at:", mockPythPriceFeedPDA.toBase58());
+      
+          const mockPythPriceFeedAccount = await program.account.mockPythPriceFeed.fetch(
+            mockPythPriceFeedPDA
+          );
+          console.log("MockPythPriceFeed Account:", mockPythPriceFeedAccount);
+          console.log("Reserve Account Before MockPythPDA:", reserveAccountBefore.mockPythFeed);
+
+    await program.methods
+      .initUpdateReserveConfig(
+        newConfig,
+        reserveAccountBefore.rateLimiter.config,
+        true // is_test
+      )
+      .accounts({
+        reserve: reservePDA,
+        lendingMarket: lendingMarketPDA,
+        signer: payer,
+        lendingMarketOwner: payer,
+        mockPythFeed: mockPythPriceFeedPDA,
+      })
+      .rpc();
+  
+    // Fetch the reserve account after update
+    const reserveAccountAfter = await program.account.reserve.fetch(reservePDA);
+  
+    // Verify that the config has been updated
+    assert.equal(reserveAccountAfter.config.fees.borrowFeeWad.toString(), newConfig.fees.borrowFeeWad.toString(), "Borrow fee should be updated");
+    assert.equal(reserveAccountAfter.config.protocolLiquidationFee, newConfig.protocolLiquidationFee, "Protocol liquidation fee should be updated");
+    assert.equal(reserveAccountAfter.config.protocolTakeRate, newConfig.protocolTakeRate, "Protocol take rate should be updated");
+    console.log("Reserve Account After MockPythPDA:", reserveAccountAfter.mockPythFeed);
+    assert.equal(reserveAccountAfter.mockPythFeed, mockPythPriceFeedPDA.toBase58(), "New mockPythPriceFeed should be updated");
+
+    // Verify that 'stale' is set to true
+    assert.isTrue(
+      reserveAccountAfter.lastUpdate.stale,
+      "Reserve last update should be marked as stale"
+    );
+  });
+  
+  it("update_reserve_config as lending market owner (fail when changing forbidden fields)", async () => {
+    // Generate a new owner keypair
+    const newOwner = Keypair.generate();
+    await airdropSol(newOwner.publicKey, 1);
+    
+    const payer = provider.wallet.publicKey;
+    const liquidator = Keypair.generate();
+    const riskAuthority = Keypair.generate();
+    riskAuthorityGlobal = riskAuthority;
+    
+    const rateLimiterConfig = {
+      windowDuration: new anchor.BN(10),  // window size of 10 slots
+      maxOutflow: new anchor.BN("1000000000000000000")  // max outflow of 1e18 tokens
+    };
+  
+    // Derive the lending market PDA
+    const [lendingMarketPDA, bump] = await PublicKey.findProgramAddress(
+      [provider.wallet.publicKey.toBuffer()],
+      program.programId
+    );
+  
+    // Set the lending market owner to newOwner
+    const tx = await program.methods
+      .setLendingMarketOwnerAndConfig(
+        newOwner.publicKey,
+        rateLimiterConfig,
+        liquidator.publicKey,
+        riskAuthority.publicKey,
+        payer // original owner
+      )
+      .accounts({
+        lendingMarket: lendingMarketPDA,
+        signer: payer,
+      })
+      .rpc();
+  
+    // console.log("Transaction signature:", tx);
+  
+    // Define 'key' for reserve
+    const key = new anchor.BN(1);
+    const keyBuffer = key.toArrayLike(Buffer, 'le', 8);
+  
+    // Derive the reserve PDA
+    const [reservePDA, reserveBump] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from("reserve"),
+        keyBuffer,
+        provider.wallet.publicKey.toBuffer(),
+      ],
+      program.programId
+    );
+  
+    // Fetch the reserve account
+    const reserveAccountBefore = await program.account.reserve.fetch(reservePDA);
+    const currentConfig = reserveAccountBefore.config;
+  
+    // Prepare new config with forbidden changes
+    const newConfig = { ...currentConfig };
+    
+    // Attempt to change forbidden fields
+    newConfig.fees.borrowFeeWad = new anchor.BN(1000); // Change fees
+    newConfig.protocolLiquidationFee = 5; // Change protocol liquidation fee
+    newConfig.protocolTakeRate = 2; // Change protocol take rate
+    newConfig.feeReceiver = Keypair.generate().publicKey; // Change fee receiver
+  
+    try {
+      // Call update_reserve_config as the new owner
+      await program.methods
+        .initUpdateReserveConfig(
+          newConfig,
+          reserveAccountBefore.rateLimiter.config,
+          true // is_test
+        )
+        .accounts({
+          reserve: reservePDA,
+          lendingMarket: lendingMarketPDA,
+          signer: newOwner.publicKey, // Update signer to newOwner
+          lendingMarketOwner: newOwner.publicKey, // Update owner to newOwner
+          mockPythFeed: reserveAccountBefore.mockPythFeed,
+        })
+        .signers([newOwner])
+        .rpc();
+  
+      // If the above does not throw, then the test fails
+      assert.fail("Expected transaction to fail when changing forbidden fields");
+    } catch (error) {
+      // Log the error to understand its structure
+      console.log("Caught error:", error);
+  
+      // Adjust error assertion based on actual error structure
+      if ('error' in error && 'errorCode' in error.error) {
+        // If error is wrapped inside AnchorError
+        assert.equal(
+          error.error.errorCode.code,
+          "NotBernanke",
+          `Expected error code: NotBernanke`
+        );
+      } else if ('message' in error && error.message.includes("NotBernanke")) {
+        // Alternatively, check the message directly
+        assert.include(
+          error.message,
+          "NotBernanke",
+          `Expected error message to include "NotBernanke", got "${error.message}"`
+        );
+      } else {
+        // If the error doesn't match expected structure, fail the test
+        assert.fail("Expected an AnchorError with code NotBernanke");
+      }
+    }
+  });
+  
+  it("update_reserve_config as unauthorized user (should fail)", async () => {
+    // Create an unauthorized user
+    const unauthorizedUser = Keypair.generate();
+    await airdropSol(unauthorizedUser.publicKey, 1); // Airdrop 1 SOL
+  
+    // Get the lending market PDA
+    const [lendingMarketPDA, bump] = await PublicKey.findProgramAddress(
+      [provider.wallet.publicKey.toBuffer()],
+      program.programId
+    );
+  
+    // Fetch the reserve PDA
+    const key = new anchor.BN(1);
+    const keyBuffer = key.toArrayLike(Buffer, 'le', 8);
+  
+    const [reservePDA, reserveBump] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from("reserve"),
+        keyBuffer,
+        provider.wallet.publicKey.toBuffer(),
+      ],
+      program.programId
+    );
+  
+    // Fetch the reserve account
+    const reserveAccountBefore = await program.account.reserve.fetch(reservePDA);
+    const currentConfig = reserveAccountBefore.config;
+  
+    // Prepare a new config (even same as before)
+    const newConfig = { ...currentConfig };
+  
+    try {
+      // Call update_reserve_config as the unauthorized user
+      await program.methods
+        .initUpdateReserveConfig(
+          newConfig,
+          reserveAccountBefore.rateLimiter.config,
+          true // is_test
+        )
+        .accounts({
+          reserve: reservePDA,
+          lendingMarket: lendingMarketPDA,
+          signer: unauthorizedUser.publicKey,
+          lendingMarketOwner: provider.wallet.publicKey,
+          mockPythFeed: reserveAccountBefore.mockPythFeed,
+        })
+        .signers([unauthorizedUser])
+        .rpc();
+      // If the above does not throw, then the test fails
+      assert.fail(
+        "Expected transaction to fail when unauthorized user attempts to update reserve config"
+      );
+    } catch (error) {
+      // Check that the error is the expected one
+      assert.ok(error instanceof anchor.AnchorError, "Expected an AnchorError");
+      const errMsg = "Unauthorized";
+      assert.equal(
+        error.error.errorCode.code,
+        "Unauthorized",
+        `Expected error code: Unauthorized`
+      );
+    }
+  });
+  
+  it("update_reserve_config as risk authority (success when decreasing limits and disabling outflows)", async () => {
+        // Fetch the reserve account
+        const key = new anchor.BN(1);
+        const keyBuffer = key.toArrayLike(Buffer, 'le', 8);
+    const [reservePDA, reserveBump] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from("reserve"),
+        keyBuffer,
+        provider.wallet.publicKey.toBuffer(),
+      ],
+      program.programId
+    );
+    // Create a risk authority keypair
+    const riskAuthority = riskAuthorityGlobal;
+    await airdropSol(riskAuthority.publicKey, 1);
+    const reserveAccountBefore = await program.account.reserve.fetch(reservePDA);
+
+  
+    // Set the risk authority in the lending market
+    const [lendingMarketPDA, bump] = await PublicKey.findProgramAddress(
+      [provider.wallet.publicKey.toBuffer()],
+      program.programId
+    );
+  
+    // Set the lending market owner and config to set the risk authority
+    // await program.methods
+    //   .setLendingMarketOwnerAndConfig(
+    //     provider.wallet.publicKey, // Keep owner as payer
+    //     reserveAccountBefore.rateLimiter.config,
+    //     null, // No whitelisted liquidator
+    //     riskAuthority.publicKey,
+    //     provider.wallet.publicKey // original owner
+    //   )
+    //   .accounts({
+    //     lendingMarket: lendingMarketPDA,
+    //     signer: provider.wallet.publicKey,
+    //   })
+    //   .rpc();
+  
+
+  
+
+  
+    // const reserveAccountBefore = await program.account.reserve.fetch(reservePDA);
+    const currentConfig = reserveAccountBefore.config;
+  
+    // Prepare new config with decreased limits
+    const newConfig = { ...currentConfig };
+    newConfig.borrowLimit = currentConfig.borrowLimit.sub(
+      new anchor.BN(100 * LAMPORTS_PER_SOL)
+    ); // Decrease borrow limit
+    newConfig.depositLimit = currentConfig.depositLimit.sub(
+      new anchor.BN(100 * LAMPORTS_PER_SOL)
+    ); // Decrease deposit limit
+  
+    // Prepare rate limiter config to disable outflows
+    const newRateLimiterConfig = { ...reserveAccountBefore.rateLimiter.config };
+    newRateLimiterConfig.maxOutflow = new anchor.BN(0); // Disable outflows
+  
+    // Call update_reserve_config as risk authority
+    await program.methods
+      .initUpdateReserveConfig(
+        newConfig,
+        newRateLimiterConfig,
+        true // is_test
+      )
+      .accounts({
+        reserve: reservePDA,
+        lendingMarket: lendingMarketPDA,
+        signer: riskAuthority.publicKey,
+        lendingMarketOwner: provider.wallet.publicKey, // Owner is still provider.wallet
+        mockPythFeed: reserveAccountBefore.mockPythFeed,
+      })
+      .signers([riskAuthority])
+      .rpc();
+  
+    // Fetch the reserve account after update
+    const reserveAccountAfter = await program.account.reserve.fetch(reservePDA);
+  
+    // Verify that borrowLimit and depositLimit have decreased
+    assert.ok(
+      reserveAccountAfter.config.borrowLimit.lt(currentConfig.borrowLimit),
+      "Borrow limit should be decreased"
+    );
+    assert.ok(
+      reserveAccountAfter.config.depositLimit.lt(currentConfig.depositLimit),
+      "Deposit limit should be decreased"
+    );
+  
+    // Verify that rate limiter maxOutflow is zero
+    assert.equal(
+      reserveAccountAfter.rateLimiter.config.maxOutflow.toString(),
+      "0",
+      "Max outflow should be zero"
+    );
+  
+    // Verify that 'stale' is set to true
+    assert.isTrue(
+      reserveAccountAfter.lastUpdate.stale,
+      "Reserve last update should be marked as stale"
+    );
+  });
 });

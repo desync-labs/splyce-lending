@@ -64,21 +64,6 @@ pub fn handle_update_reserve_config(
             // Bernanke is also the lending market owner
             msg!("Bernanke is updating the reserve config (owner)");
 
-            // Ensure forbidden fields are not changed
-            require!(
-                reserve.config.protocol_liquidation_fee == config.protocol_liquidation_fee,
-                ErrorCode::NotBernanke
-            );
-            require!(
-                reserve.config.protocol_take_rate == config.protocol_take_rate,
-                ErrorCode::NotBernanke
-            );
-            require!(
-                reserve.config.fee_receiver == config.fee_receiver,
-                ErrorCode::NotBernanke
-            );
-            require!(reserve.config.fees == config.fees, ErrorCode::NotBernanke);
-
             // Bernanke (owner) can update the following fields
             reserve.config.fees = config.fees;
             reserve.config.protocol_liquidation_fee = config.protocol_liquidation_fee;
@@ -167,7 +152,7 @@ pub fn handle_update_reserve_config(
         // Unauthorized signer
         return Err(ErrorCode::Unauthorized.into());
     }
-    
+
     reserve.last_update.mark_stale();
 
     Ok(())

@@ -186,7 +186,7 @@ pub fn handle_init_reserve(
         key,
     });
 
-    if is_test {
+    if is_test && reserve.mock_pyth_feed != ctx.accounts.mock_pyth_feed.key() {
         //update mock pyth feed
         reserve.mock_pyth_feed = ctx.accounts.mock_pyth_feed.key();
     };
