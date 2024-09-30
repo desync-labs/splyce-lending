@@ -658,12 +658,47 @@ describe("splyce-lending", () => {
     }
   });
 
-  it("update_reserve_config as BERNANKE (success case)", async () => {
-    // Derive PDAs
-    const [lendingMarketPDA, lendingMarketBump] = await PublicKey.findProgramAddress(
-      [provider.wallet.publicKey.toBuffer()],
-      program.programId
-    );
+  it("update_reserve_config as BERNANKE (success, when not the lending_market.owner)", async () => {
+        // Get the payer account (signer)
+        const payer = provider.wallet.publicKey;
+        // Setting lending market owner to someone else
+        const [lendingMarketPDA, bump] = await PublicKey.findProgramAddress(
+          [provider.wallet.publicKey.toBuffer()],
+          program.programId
+        );
+    
+        interface RateLimiterConfig {
+          windowDuration: anchor.BN;  // u64
+          maxOutflow: anchor.BN;      // u128
+        }
+    
+        const rateLimiterConfig: RateLimiterConfig = {
+          windowDuration: new anchor.BN(10),  // window size of 100 slots
+          maxOutflow: new anchor.BN("1000000000000000000")  // max outflow of 1e18 tokens
+        };
+    
+        const newOwner = Keypair.generate();
+        //airdrop some SOL to the new owner
+        await airdropSol(newOwner.publicKey, 1);
+        const liquidator = Keypair.generate();
+        const riskAuthority = Keypair.generate();
+    
+        // Initialize the transaction for setting the lending market owner and config
+        const tx = await program.methods
+          .setLendingMarketOwnerAndConfig(
+            newOwner.publicKey,
+            rateLimiterConfig,
+            liquidator.publicKey,
+            riskAuthority.publicKey,
+            payer // orginal owner
+          )
+          .accounts({
+            lendingMarket: lendingMarketPDA,
+            signer: payer,
+          })
+          .rpc();
+    
+        //done setting lending market owner to someone else
   
     const key = new anchor.BN(1);
     const keyBuffer = key.toArrayLike(Buffer, 'le', 8);
@@ -688,9 +723,6 @@ describe("splyce-lending", () => {
     newConfig.protocolTakeRate = 2; // Set protocol take rate to 2%
     // Assuming feeReceiver is an existing public key
     newConfig.feeReceiver = provider.wallet.publicKey;
-  
-    // Prepare rate_limiter_config (no changes)
-    const rateLimiterConfig = reserveAccountBefore.rateLimiter.config;
   
     // Call update_reserve_config as BERNANKE
     await program.methods
