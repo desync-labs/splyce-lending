@@ -39,54 +39,123 @@ pub fn handle_update_reserve_config(
     let reserve = &mut ctx.accounts.reserve;
     let program_id = &ctx.program_id;
 
-    let (expected_pda, expected_bump) = Pubkey::find_program_address(
-        &[&lending_market.owner.to_bytes()],
-        program_id
+    // Ensure the reserve belongs to the lending market
+    require!(
+        reserve.lending_market == lending_market.key(),
+        ErrorCode::InvalidReserveLendingMarketMatch
     );
 
-    require!(reserve.lending_market == lending_market.key(), ErrorCode::InvalidReserveLendingMarketMatch);
-    //when bernanke tries to update config
-    if signer.key() == BERNANKE.parse::<Pubkey>().unwrap() && signer.key() != lending_market.owner{
-        msg!("Bernanke is updating the reserve config");
-        reserve.config.fees = config.fees;
-        reserve.config.protocol_liquidation_fee = config.protocol_liquidation_fee;
-        reserve.config.protocol_take_rate = config.protocol_take_rate;
-        reserve.config.fee_receiver = config.fee_receiver;
+    // Parse Bernanke's public key
+    let bernanke_pubkey = BERNANKE.parse::<Pubkey>().unwrap();
+    msg!("BERNANKE is : {:?}", bernanke_pubkey);
+    msg!("Signer is : {:?}", signer.key());
 
-    //when the lending market owner tries to update config
-    } else if signer.key() == lending_market.owner && expected_pda == lending_market.key() && expected_bump == lending_market.bump_seed {
-        require!(reserve.config.protocol_liquidation_fee == config.protocol_liquidation_fee, ErrorCode::NotBernanke);
-        require!(reserve.config.protocol_take_rate == config.protocol_take_rate, ErrorCode::NotBernanke);
-        require!(reserve.config.fee_receiver == config.fee_receiver, ErrorCode::NotBernanke);
+    // When the signer is Bernanke
+    if signer.key() == bernanke_pubkey {
+        if signer.key() != lending_market.owner {
+            // Bernanke is updating the reserve config (not owner)
+            msg!("Bernanke is updating the reserve config (not owner)");
+            // Bernanke can only change the following fields
+            reserve.config.fees = config.fees;
+            reserve.config.protocol_liquidation_fee = config.protocol_liquidation_fee;
+            reserve.config.protocol_take_rate = config.protocol_take_rate;
+            reserve.config.fee_receiver = config.fee_receiver;
+        } else {
+            // Bernanke is also the lending market owner
+            msg!("Bernanke is updating the reserve config (owner)");
+
+            // Ensure forbidden fields are not changed
+            require!(
+                reserve.config.protocol_liquidation_fee == config.protocol_liquidation_fee,
+                ErrorCode::NotBernanke
+            );
+            require!(
+                reserve.config.protocol_take_rate == config.protocol_take_rate,
+                ErrorCode::NotBernanke
+            );
+            require!(
+                reserve.config.fee_receiver == config.fee_receiver,
+                ErrorCode::NotBernanke
+            );
+            require!(reserve.config.fees == config.fees, ErrorCode::NotBernanke);
+
+            // Bernanke (owner) can update the following fields
+            reserve.config.fees = config.fees;
+            reserve.config.protocol_liquidation_fee = config.protocol_liquidation_fee;
+            reserve.config.protocol_take_rate = config.protocol_take_rate;
+            reserve.config.fee_receiver = config.fee_receiver;
+
+            // Update rate limiter if necessary
+            if rate_limiter_config != reserve.rate_limiter.config {
+                reserve.rate_limiter = RateLimiter::new(rate_limiter_config, Clock::get()?.slot);
+            }
+
+            // Fetch and update market price
+            msg!("Fetching market price");
+            if is_test {
+                let (market_price, expo) = ctx.accounts.mock_pyth_feed.get_price();
+                msg!("Test mode: Market price fetched as {}", market_price);
+                // Update prices
+                reserve.liquidity.market_price = market_price as u128;
+                reserve.liquidity.smoothed_market_price = market_price as u128;
+                // Update mock pyth feed
+                reserve.mock_pyth_feed = ctx.accounts.mock_pyth_feed.key();
+            } else {
+                // TODO: Implement mainnet/testnet price fetching
+                msg!("Mainnet/Testnet mode: Market price fetching not implemented");
+                // TODO: Implement price feed changes
+                msg!("Mainnet/Testnet mode: Price feed changes not implemented");
+            }
+        }
+    } else if signer.key() == lending_market.owner && signer.key() != bernanke_pubkey {
+        // Signer is the lending market owner but not Bernanke
+        msg!("Lending market owner is updating the reserve config");
+
+        // Ensure forbidden fields are not changed
+        require!(
+            reserve.config.protocol_liquidation_fee == config.protocol_liquidation_fee,
+            ErrorCode::NotBernanke
+        );
+        require!(
+            reserve.config.protocol_take_rate == config.protocol_take_rate,
+            ErrorCode::NotBernanke
+        );
+        require!(
+            reserve.config.fee_receiver == config.fee_receiver,
+            ErrorCode::NotBernanke
+        );
         require!(reserve.config.fees == config.fees, ErrorCode::NotBernanke);
 
-        // if window duration or max outflow are different, then create a new rate limiter instance.
+        // Update rate limiter if necessary
         if rate_limiter_config != reserve.rate_limiter.config {
             reserve.rate_limiter = RateLimiter::new(rate_limiter_config, Clock::get()?.slot);
         }
 
+        // Fetch and update market price
         msg!("Fetching market price");
-        let (mut market_price, mut expo) = (0, 0);
         if is_test {
-            (market_price, expo) = ctx.accounts.mock_pyth_feed.get_price();
+            let (market_price, expo) = ctx.accounts.mock_pyth_feed.get_price();
             msg!("Test mode: Market price fetched as {}", market_price);
-            //update prices
+            // Update prices
             reserve.liquidity.market_price = market_price as u128;
             reserve.liquidity.smoothed_market_price = market_price as u128;
-            //update mock pyth feed
+            // Update mock pyth feed
             reserve.mock_pyth_feed = ctx.accounts.mock_pyth_feed.key();
         } else {
             // TODO: Implement mainnet/testnet price fetching
             msg!("Mainnet/Testnet mode: Market price fetching not implemented");
-            // TODO; Implement price feed changes
+            // TODO: Implement price feed changes
             msg!("Mainnet/Testnet mode: Price feed changes not implemented");
         }
     } else if signer.key() == lending_market.risk_authority {
-        // only can disable outflows
+        // Signer is the risk authority
+        msg!("Risk authority is updating the reserve config");
+
+        // Only can disable outflows
         if rate_limiter_config.window_duration > 0 && rate_limiter_config.max_outflow == 0 {
             reserve.rate_limiter = RateLimiter::new(rate_limiter_config, Clock::get()?.slot);
         }
-        // only certain reserve config fields can be changed by the risk authority, and only in the
+        // Only certain reserve config fields can be changed by the risk authority, and only in the
         // safer direction for now
         if config.borrow_limit < reserve.config.borrow_limit {
             reserve.config.borrow_limit = config.borrow_limit;
@@ -95,8 +164,11 @@ pub fn handle_update_reserve_config(
             reserve.config.deposit_limit = config.deposit_limit;
         }
     } else {
+        // Unauthorized signer
         return Err(ErrorCode::Unauthorized.into());
     }
+    
     reserve.last_update.mark_stale();
+
     Ok(())
 }
