@@ -55,4 +55,22 @@ pub enum ErrorCode {
 
     #[msg("Debug")]
     Here,
+
+    #[msg("Invalid Token Program")] //or TokenProgramMismatch, however it is perceived
+    InvalidTokenProgram,
+
+    #[msg("Invalid Collateral Mint Account")]
+    InvalidCollateralMintAccount,
+
+    #[msg("Invalid Source of Collateral")]
+    InvalidSourceOfCollateral,
+
+    #[msg("Invalid Source Of Liquidity")]
+    InvalidSourceOfLiquidity,
+
+    #[msg("Invalid Destination Of Liquidity")]
+    InvalidDestinationOfLiquidity,
+
+    #[msg("Reserve is stale and must be refreshed in the current slot")]
+    ReserveStale,
 }

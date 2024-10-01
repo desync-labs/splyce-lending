@@ -28,10 +28,9 @@ pub fn handle_init_lending_market(
     ctx: Context<LendingMarketInit>,
     quote_currency: [u8; 32],
 ) -> Result<()> {
+    msg!("Starting InitLendingMarket");
     let lending_market = &mut ctx.accounts.lending_market;
     let signer = &mut ctx.accounts.signer;
-    //log signer
-    msg!("Signer lending: {:?}", signer.key());
     let token_program = &ctx.accounts.token_program;
     let program_id = &ctx.program_id;
 

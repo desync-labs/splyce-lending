@@ -72,4 +72,12 @@ pub mod splyce_lending {
         msg!("Instruction: update_reserve_config");
         handle_update_reserve_config(ctx, config, rate_limiter_config, is_test)
     }
+
+    pub fn redeem_reserve_collateral(
+        ctx: Context<RedeemReserveCollateral>,
+        collateral_amount: u64,
+    ) -> Result<()> {
+        msg!("Instruction: redeem_reserve_collateral");
+        handle_redeem_reserve_collateral(ctx, collateral_amount)
+    }
 }

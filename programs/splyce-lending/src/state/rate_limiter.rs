@@ -70,11 +70,6 @@ impl RateLimiter {
             return Ok(());
         }
 
-        if cur_slot < self.window_start {
-            msg!("Current slot is less than window start, which is impossible");
-            return Err(ErrorCode::InvalidArgument.into());
-        }
-
         let cur_slot_start = cur_slot / self.config.window_duration * self.config.window_duration;
 
         match cur_slot_start.cmp(&(self.window_start + self.config.window_duration)) {

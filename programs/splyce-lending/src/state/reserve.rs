@@ -125,8 +125,8 @@ impl Reserve {
     /// Upper bound price for reserve mint
     pub fn price_upper_bound(&self) -> u128 {
         let price = std::cmp::max(
-            self.liquidity.market_price,
-            self.liquidity.smoothed_market_price,
+            self.liquidity.market_price, //decimal 9
+            self.liquidity.smoothed_market_price, //decimal 9
         );
 
         if let Some(extra_price) = self.liquidity.extra_market_price {
@@ -180,11 +180,11 @@ impl Reserve {
         &self,
         liquidity_amount: u128,
     ) -> Result<u128> {
-        self.price_upper_bound()
-            .checked_mul(liquidity_amount)
+        self.price_upper_bound() //u128 decimal 9
+            .checked_mul(liquidity_amount) //u128 decimal 9
             .ok_or(ErrorCode::MathOverflow)?
-            .checked_div((10u128)
-                .checked_pow(self.liquidity.mint_decimals as u32)
+            .checked_div((10u128) //2024-10-01 is this the right approach, when the price is with 9 decimal, and also the liquidity amount is with 9 decimal???
+                .checked_pow(self.liquidity.mint_decimals as u32) //decimal 9
                 .ok_or(ErrorCode::MathOverflow)?)
             .ok_or(ErrorCode::MathOverflow.into())
     }

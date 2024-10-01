@@ -21,6 +21,7 @@ pub fn handle_set_lending_market_owner_and_config(
     risk_authority: Pubkey,
     original_owner: Pubkey,
 ) -> Result<()> {
+    msg!("Update lending market owner and config");
     let lending_market = &mut ctx.accounts.lending_market;
     let signer = &mut ctx.accounts.signer;
     let program_id = ctx.program_id;
