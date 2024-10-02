@@ -1377,4 +1377,128 @@ describe("splyce-lending", () => {
       throw error;
     }
   });
+
+  it("deposit_reserve_liquidity as a secondary user", async () => {
+    try {
+      // 1. Initialize Secondary User
+      const secondaryUser = Keypair.generate();
+      await airdropSol(secondaryUser.publicKey, 2); // Airdrop 2 SOL to the secondary user
+      console.log("Secondary User PublicKey:", secondaryUser.publicKey.toBase58());
+  
+      // 2. Wrap SOL into WSOL for Secondary User
+      const wrapAmount = 1; // Amount of SOL to wrap
+      const wsolTokenAccount = await wrapSOL(provider, wrapAmount);
+      console.log(`WSOL Account for Secondary User: ${wsolTokenAccount.toBase58()}`);
+  
+      // 3. Derive Necessary PDAs
+      const [lendingMarketPDA, _lendingMarketBump] = await PublicKey.findProgramAddress(
+        [secondaryUser.publicKey.toBuffer()],
+        program.programId
+      );
+  
+      const key = new anchor.BN(1);
+      const keyBuffer = key.toArrayLike(Buffer, 'le', 8);
+  
+      const [reservePDA, _reserveBump] = await PublicKey.findProgramAddress(
+        [
+          Buffer.from("reserve"),
+          keyBuffer,
+          provider.wallet.publicKey.toBuffer(), // Assuming the reserve is tied to the default signer
+        ],
+        program.programId
+      );
+  
+      // 4. Create Collateral User Account for Secondary User
+      // Assume collateral mint is already initialized in init_reserve
+      const reserveAccount = await program.account.reserve.fetch(reservePDA);
+      const collateralMintPubkey = reserveAccount.collateral.mintPubkey;
+  
+      // Derive the collateral user's associated token account (ATA) for LP tokens
+      const collateralUserAccount = await getAssociatedTokenAddress(
+        collateralMintPubkey,
+        secondaryUser.publicKey,
+        false, // Allow owner off curve
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+  
+      // Create the collateral ATA if it doesn't exist
+      const collateralATAInfo = await provider.connection.getAccountInfo(collateralUserAccount);
+      if (!collateralATAInfo) {
+        const createCollateralATAIx = createAssociatedTokenAccountInstruction(
+          secondaryUser.publicKey,      // Payer
+          collateralUserAccount,        // ATA
+          secondaryUser.publicKey,      // Owner
+          collateralMintPubkey          // Mint
+        );
+  
+        const tx = new Transaction().add(createCollateralATAIx);
+        await provider.connection.sendTransaction(tx, [secondaryUser], { skipPreflight: false, preflightCommitment: "confirmed" });
+        console.log("Collateral ATA created for Secondary User.");
+      } else {
+        console.log("Collateral ATA already exists for Secondary User.");
+      }
+  
+      // 5. Provide WSOL as Liquidity
+      // Define the liquidity amount to deposit (e.g., 0.5 SOL)
+      const liquidityAmount = new anchor.BN(0.5 * LAMPORTS_PER_SOL); // 0.5 SOL in lamports
+  
+      // Call the deposit_reserve_liquidity instruction as the secondary user
+      await program.methods
+        .depositReserveLiquidity(
+          liquidityAmount
+        )
+        .accounts({
+          liquidityUserAccount: wsolTokenAccount,             // Secondary user's WSOL account
+          collateralUserAccount: collateralUserAccount,      // Secondary user's Collateral (LP) Token account
+          reserve: reservePDA,
+          liquidityReserveAccount: reserveAccount.liquidity.supplyPubkey,
+          collateralMintAccount: collateralMintPubkey,
+          lendingMarket: lendingMarketPDA,
+          signer: secondaryUser.publicKey,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .signers([secondaryUser])
+        .rpc();
+  
+      console.log("Deposit Reserve Liquidity Transaction successful.");
+  
+      // 6. Fetch and Assert Balances After Deposit
+      // Fetch collateral token balance after deposit
+      const collateralBalanceAfter = await provider.connection.getTokenAccountBalance(collateralUserAccount);
+      const collateralBalanceAfterAmount = parseFloat(collateralBalanceAfter.value.uiAmountString || "0");
+      console.log(`Collateral Token Balance after deposit: ${collateralBalanceAfterAmount} CTokens`);
+  
+      // Assert that collateral tokens have been minted
+      assert.isAbove(
+        collateralBalanceAfterAmount,
+        0,
+        "Collateral Token balance should be greater than 0 after deposit."
+      );
+  
+      // Optionally, fetch reserve account and perform additional assertions
+      const reserveAccountAfter = await program.account.reserve.fetch(reservePDA);
+      console.log("Reserve Account After Deposit:", reserveAccountAfter);
+  
+      // Verify that the reserve's available liquidity has increased
+      assert.equal(
+        reserveAccountAfter.liquidity.availableAmount.toNumber(),
+        reserveAccount.liquidity.availableAmount.toNumber() + liquidityAmount.toNumber(),
+        "Reserve's available liquidity should increase by the deposited amount."
+      );
+  
+      // Verify that 'stale' is set to true
+      assert.isTrue(
+        reserveAccountAfter.lastUpdate.stale,
+        "Reserve last update should be marked as stale after deposit."
+      );
+  
+    } catch (error) {
+      console.error("Error during deposit_reserve_liquidity as secondary user test:", error);
+      throw error;
+    }
+  });
+  
 });
