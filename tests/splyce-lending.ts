@@ -7,6 +7,7 @@ import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
   ASSOCIATED_TOKEN_PROGRAM_ID,
+  getMint
 } from "@solana/spl-token";
 console.log("TOKEN_PROGRAM_ID:", TOKEN_PROGRAM_ID.toBase58());
 console.log("ASSOCIATED_TOKEN_PROGRAM_ID:", ASSOCIATED_TOKEN_PROGRAM_ID.toBase58());
@@ -1152,17 +1153,17 @@ describe("splyce-lending", () => {
     try {
       // 1) Fetch necessary accounts and PDAs
       const payer = provider.wallet.publicKey;
-
+  
       // Derive the lending market PDA
       const [lendingMarketPDA, lendingMarketBump] = await PublicKey.findProgramAddress(
         [provider.wallet.publicKey.toBuffer()],
         program.programId
       );
-
+  
       // Define 'key' for reserve
       const key = new anchor.BN(1);
       const keyBuffer = key.toArrayLike(Buffer, 'le', 8);
-
+  
       // Derive the reserve PDA
       const [reservePDA, reserveBump] = await PublicKey.findProgramAddress(
         [
@@ -1172,14 +1173,14 @@ describe("splyce-lending", () => {
         ],
         program.programId
       );
-
-      // Fetch the reserve account
-      const reserveAccount = await program.account.reserve.fetch(reservePDA);
-      console.log("Reserve Account:", reserveAccount);
-
+  
+      // Fetch the reserve account **before** redemption
+      let reserveAccountBefore = await program.account.reserve.fetch(reservePDA);
+      console.log("Reserve Account Before Redemption:", reserveAccountBefore);
+  
       // Collateral Mint Account
-      const collateralMintPubkey = reserveAccount.collateral.mintPubkey;
-
+      const collateralMintPubkey = reserveAccountBefore.collateral.mintPubkey;
+  
       // Collateral User Account (where the user's collateral tokens are)
       const collateralUserAccount = await getAssociatedTokenAddress(
         collateralMintPubkey,
@@ -1188,10 +1189,10 @@ describe("splyce-lending", () => {
         TOKEN_PROGRAM_ID,
         ASSOCIATED_TOKEN_PROGRAM_ID
       );
-
+  
       // Liquidity Mint Account (e.g., WSOL)
-      const liquidityMintPubkey = reserveAccount.liquidity.mintPubkey;
-
+      const liquidityMintPubkey = reserveAccountBefore.liquidity.mintPubkey;
+  
       // Liquidity User Account (where the user's liquidity tokens will be received)
       const liquidityUserAccount = await getAssociatedTokenAddress(
         liquidityMintPubkey,
@@ -1200,13 +1201,13 @@ describe("splyce-lending", () => {
         TOKEN_PROGRAM_ID,
         ASSOCIATED_TOKEN_PROGRAM_ID
       );
-
+  
       // Liquidity Reserve Account (where the liquidity is stored in the reserve)
-      const liquidityReserveAccount = reserveAccount.liquidity.supplyPubkey;
-
+      const liquidityReserveAccount = reserveAccountBefore.liquidity.supplyPubkey;
+  
       // Signer (the user)
       const signer = provider.wallet.publicKey;
-
+  
       // 2) Ensure Liquidity User Account exists
       const liquidityUserAccountInfo = await provider.connection.getAccountInfo(liquidityUserAccount);
       if (!liquidityUserAccountInfo) {
@@ -1217,33 +1218,33 @@ describe("splyce-lending", () => {
           signer,                  // Owner
           liquidityMintPubkey      // Mint
         );
-
+  
         const tx = new Transaction().add(createLiquidityUserAccountIx);
         await provider.sendAndConfirm(tx, []);
       }
-
+  
       // 3) Fetch and Store Balances Before Redemption
-
+  
       // Fetch collateral token balance before redemption
       const collateralBalanceBefore = await provider.connection.getTokenAccountBalance(collateralUserAccount);
       const collateralBalanceBeforeAmount = parseFloat(collateralBalanceBefore.value.uiAmountString || "0");
       console.log(`Collateral Token Balance before redemption: ${collateralBalanceBeforeAmount} CTokens`);
-
+  
       // Fetch liquidity token balance before redemption
       const liquidityBalanceBefore = await provider.connection.getTokenAccountBalance(liquidityUserAccount);
       const liquidityBalanceBeforeAmount = parseFloat(liquidityBalanceBefore.value.uiAmountString || "0");
       console.log(`Liquidity Token Balance before redemption: ${liquidityBalanceBeforeAmount} Tokens`);
-
+  
       // 4) Determine the amount of collateral to redeem
       const collateralAmountToRedeem = new anchor.BN(collateralBalanceBefore.value.amount).div(new anchor.BN(2)); // Redeem half
-
+  
       // Ensure we are redeeming at least some amount
       if (collateralAmountToRedeem.lte(new anchor.BN(0))) {
         throw new Error("Insufficient collateral to redeem.");
       }
-
+  
       console.log(`Redeeming ${collateralAmountToRedeem.toString()} collateral tokens`);
-
+  
       console.log("Reserve PDA:", reservePDA.toBase58());
       console.log("Lending Market PDA:", lendingMarketPDA.toBase58());
       console.log("Collateral Mint Pubkey:", collateralMintPubkey.toBase58());
@@ -1252,8 +1253,41 @@ describe("splyce-lending", () => {
       console.log("Liquidity User Account:", liquidityUserAccount.toBase58());
       console.log("Liquidity Reserve Account:", liquidityReserveAccount.toBase58());
       console.log("Signer:", signer.toBase58());
-
-      // 5) Call the redeem_reserve_collateral instruction
+  
+      // Fetch the collateral mint account to get the decimals
+      const collateralMintAccount = await getMint(provider.connection, collateralMintPubkey);
+      const collateralDecimals = collateralMintAccount.decimals;
+      console.log(`Collateral Decimals: ${collateralDecimals}`);
+  
+      // Fetch the liquidity mint account to get the decimals
+      const liquidityMintAccount = await getMint(provider.connection, liquidityMintPubkey);
+      const liquidityDecimals = liquidityMintAccount.decimals;
+      console.log(`Liquidity Decimals: ${liquidityDecimals}`);
+  
+      // 5) **Calculate the Exchange Rate and Liquidity Amount Received**
+  
+      // Calculate the exchange rate manually using reserveAccountBefore
+      const liquidityAvailableAmountBefore = new anchor.BN(reserveAccountBefore.liquidity.availableAmount.toString());
+      console.log(`Liquidity Available Amount Before Redemption: ${liquidityAvailableAmountBefore.toString()}`);
+      const collateralMintTotalSupplyBefore = new anchor.BN(reserveAccountBefore.collateral.mintTotalSupply.toString());
+  
+      const WAD = new anchor.BN(1e9); // Assuming WAD is 1e9
+  
+      let collateralExchangeRate;
+      if (collateralMintTotalSupplyBefore.eq(new anchor.BN(0))) {
+        collateralExchangeRate = WAD;
+      } else {
+        collateralExchangeRate = liquidityAvailableAmountBefore.mul(WAD).div(collateralMintTotalSupplyBefore);
+      }
+  
+      console.log(`Collateral Exchange Rate: ${collateralExchangeRate.toString()}`);
+  
+      const liquidityAmountReceived = collateralAmountToRedeem.mul(collateralExchangeRate).div(WAD);
+      console.log(`Liquidity Amount Received: ${liquidityAmountReceived.toString()}`);
+      const liquidityAmountReceivedDecimal = liquidityAmountReceived.toNumber() / Math.pow(10, liquidityDecimals);
+      console.log(`Liquidity Amount Received (Decimal): ${liquidityAmountReceivedDecimal}`);
+  
+      // 6) Call the redeem_reserve_collateral instruction
       await program.methods
         .redeemReserveCollateral(
           collateralAmountToRedeem
@@ -1263,66 +1297,76 @@ describe("splyce-lending", () => {
           lendingMarket: lendingMarketPDA,
           collateralMintAccount: collateralMintPubkey,
           collateralUserAccount: collateralUserAccount,
-          liquidityMintAccount: liquidityMintPubkey,
           liquidityUserAccount: liquidityUserAccount,
           liquidityReserveAccount: liquidityReserveAccount,
           signer: signer,
           tokenProgram: TOKEN_PROGRAM_ID,
         })
         .rpc();
-
+  
       console.log("Redeem transaction successful");
-
-      // 6) Fetch and Store Balances After Redemption
-
+  
+      // 7) Fetch and Store Balances After Redemption
+  
       // Fetch collateral token balance after redemption
       const collateralBalanceAfter = await provider.connection.getTokenAccountBalance(collateralUserAccount);
       const collateralBalanceAfterAmount = parseFloat(collateralBalanceAfter.value.uiAmountString || "0");
       console.log(`Collateral Token Balance after redemption: ${collateralBalanceAfterAmount} CTokens`);
-
+  
       // Fetch liquidity token balance after redemption
       const liquidityBalanceAfter = await provider.connection.getTokenAccountBalance(liquidityUserAccount);
       const liquidityBalanceAfterAmount = parseFloat(liquidityBalanceAfter.value.uiAmountString || "0");
       console.log(`Liquidity Token Balance after redemption: ${liquidityBalanceAfterAmount} Tokens`);
-
-      // 7) Assert the Balance Changes
-
+  
+      // 8) Assert the Balance Changes
+  
+      // Calculate the collateral amount to redeem in decimal form
+      const collateralAmountToRedeemDecimal = collateralAmountToRedeem.toNumber() / Math.pow(10, collateralDecimals);
+      const expectedCollateralBalance = collateralBalanceBeforeAmount - collateralAmountToRedeemDecimal;
+  
+      console.log(`Collateral Amount to Redeem (Decimal): ${collateralAmountToRedeemDecimal}`);
+      console.log(`Expected Collateral Balance: ${expectedCollateralBalance}`);
+  
       // Collateral balance should decrease by the redeemed amount
-      const expectedCollateralBalance = collateralBalanceBeforeAmount - (collateralAmountToRedeem.toNumber() / Math.pow(10, 9)); // Assuming 9 decimals
       assert.closeTo(
         collateralBalanceAfterAmount,
         expectedCollateralBalance,
         0.0001,
         `Collateral balance should decrease by the redeemed amount`
       );
-
-      // Liquidity balance should increase by the redeemed liquidity amount
-      // Need to calculate expected liquidity received based on exchange rate
-      const collateralExchangeRate = await reserveAccount.collateralExchangeRate();
-      const liquidityAmountReceived = collateralAmountToRedeem.mul(new anchor.BN(WAD)).div(new anchor.BN(collateralExchangeRate));
-
-      const expectedLiquidityBalance = liquidityBalanceBeforeAmount + (liquidityAmountReceived.toNumber() / Math.pow(10, reserveAccount.liquidity.mintDecimals));
+  
+      // Calculate expected liquidity balance after redemption
+      const expectedLiquidityBalance = liquidityBalanceBeforeAmount + liquidityAmountReceivedDecimal;
+      console.log(`Expected Liquidity Balance After Redemption: ${expectedLiquidityBalance}`);
+  
+      // Liquidity balance should increase by the redeemed amount
       assert.closeTo(
         liquidityBalanceAfterAmount,
         expectedLiquidityBalance,
         0.0001,
         `Liquidity balance should increase by the redeemed amount`
       );
-
-      // 8) Additional assertions as needed
-
-      // Fetch the reserve account after redemption
+  
+      // 9) Fetch the reserve account **after** redemption
       const reserveAccountAfter = await program.account.reserve.fetch(reservePDA);
-
-      // Verify that the reserve's available liquidity decreased accordingly
-      const expectedAvailableAmount = reserveAccount.liquidity.availableAmount - liquidityAmountReceived.toNumber();
+  
+      // 10) Verify that the reserve's available liquidity decreased accordingly
+      const liquidityAvailableAmountAfter = new anchor.BN(reserveAccountAfter.liquidity.availableAmount.toString());
+      console.log(`Liquidity Available Amount After Redemption: ${liquidityAvailableAmountAfter.toString()}`);
+  
+      const expectedAvailableAmount = liquidityAvailableAmountBefore.sub(liquidityAmountReceived);
+  
+      console.log("Check here!");
+      console.log(`Actual Available Liquidity After Redemption: ${liquidityAvailableAmountAfter.toString()}`);
+      console.log(`Expected Available Liquidity After Redemption: ${expectedAvailableAmount.toString()}`);
+  
       assert.equal(
-        reserveAccountAfter.liquidity.availableAmount.toString(),
+        liquidityAvailableAmountAfter.toString(),
         expectedAvailableAmount.toString(),
         "Reserve's available liquidity should decrease by the redeemed amount"
       );
-
-      // Verify that 'stale' is set to true after redemption
+  
+      // 11) Verify that 'stale' is set to true after redemption
       assert.isTrue(
         reserveAccountAfter.lastUpdate.stale,
         "Reserve last update should be marked as stale after redemption"
