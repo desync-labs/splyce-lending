@@ -84,10 +84,12 @@ pub fn handle_deposit_reserve_liquidity(
     // require!(reserve.last_update.is_stale(clock.slot) == false, ErrorCode::ReserveStale); //Keep this commented out for now until _refresh_reserve_interest gets implemented
 
     //check if the deposit limit is reached
-    if liquidity_amount as u128
-        .checked_add(reserve.liquidity.total_supply()?)?
-        > reserve.config.deposit_limit as u128
-    {
+    // Calculate the new total liquidity by adding the deposited amount
+    let new_total_liquidity = (liquidity_amount as u128)
+        .checked_add(reserve.liquidity.total_supply()?)
+        .ok_or(ErrorCode::MathOverflow)?;
+
+    if new_total_liquidity > reserve.config.deposit_limit as u128 {
         msg!("Cannot deposit liquidity above the reserve deposit limit");
         return Err(ErrorCode::DepositedOverLimit.into());
     }
@@ -106,8 +108,8 @@ pub fn handle_deposit_reserve_liquidity(
 
     transfer_token_to(
         token_program.to_account_info(),
-        liquidity_user_account, //source
-        collateral_user_account, //destination
+        liquidity_user_account.to_account_info(), //source
+        collateral_user_account.to_account_info(), //destination
         signer.to_account_info(),
         liquidity_amount,
     )?;

@@ -80,4 +80,7 @@ pub enum ErrorCode {
 
     #[msg("Reserve is stale and must be refreshed in the current slot")]
     ReserveStale,
+
+    #[msg("Invalid Total Supply")]
+    InvalidTotalSupply,
 }

@@ -82,7 +82,7 @@ pub mod splyce_lending {
     }
 
     pub fn deposit_reserve_liquidity(
-        ctx: Context<DepositLiquidity>,
+        ctx: Context<DepositReserveLiquidity>,
         liquidity_amount: u64,
     ) -> Result<()> {
         msg!("Instruction: deposit_reserve_liquidity");
