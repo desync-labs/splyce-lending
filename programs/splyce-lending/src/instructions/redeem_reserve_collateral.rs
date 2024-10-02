@@ -31,7 +31,6 @@ pub struct RedeemCollateral<'info> {
     #[account(mut)]
     pub lending_market: Account<'info, LendingMarket>, //I don't think there is any change in the lending account in this flow, so not mut 
 
-
     #[account(mut)]
     pub signer: Signer<'info>,
     
@@ -106,6 +105,11 @@ pub fn handle_redeem_reserve_collateral(
             })?;
     }
 
+    let seeds: &[&[u8]] = &[
+        &lending_market.original_owner.to_bytes(),
+        &[lending_market.bump_seed],
+    ];
+
     token::burn(
         CpiContext::new(
             token_program.to_account_info(), 
@@ -113,16 +117,10 @@ pub fn handle_redeem_reserve_collateral(
                 mint: collateral_mint_account.to_account_info(),
                 from: collateral_user_account.to_account_info(),
                 authority: signer.to_account_info(),
-            }
+            },
         ), 
         liquidity_amount
     )?;
-
-
-    let seeds: &[&[u8]] = &[
-        &lending_market.owner.key().to_bytes(),
-        &[lending_market.bump_seed],
-    ];
 
     // Redeem the liquidity token
     transfer_token_from(
