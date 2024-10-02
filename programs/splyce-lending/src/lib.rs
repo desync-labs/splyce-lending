@@ -74,7 +74,7 @@ pub mod splyce_lending {
     }
 
     pub fn redeem_reserve_collateral(
-        ctx: Context<RedeemReserveCollateral>,
+        ctx: Context<RedeemCollateral>,
         collateral_amount: u64,
     ) -> Result<()> {
         msg!("Instruction: redeem_reserve_collateral");
