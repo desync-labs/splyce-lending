@@ -71,6 +71,13 @@ pub enum ErrorCode {
     #[msg("Invalid Destination Of Liquidity")]
     InvalidDestinationOfLiquidity,
 
+    #[msg("Invalid Destination Of Collateral")]
+    InvalidDestinationOfCollateral,
+
+
+    #[msg("Deposit Over Limit")]
+    DepositedOverLimit,
+
     #[msg("Reserve is stale and must be refreshed in the current slot")]
     ReserveStale,
 }

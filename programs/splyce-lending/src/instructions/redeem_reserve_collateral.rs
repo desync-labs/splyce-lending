@@ -63,6 +63,10 @@ pub fn handle_redeem_reserve_collateral(
         ErrorCode::InvalidLendingMarketAccount
     );
     require!(
+        lending_market.token_program_id == token_program.key(),
+        ErrorCode::InvalidTokenProgram
+    );
+    require!(
         reserve.collateral.mint_pubkey == collateral_mint_account.key(),
         ErrorCode::InvalidCollateralMintAccount
     );
@@ -78,6 +82,7 @@ pub fn handle_redeem_reserve_collateral(
         reserve.liquidity.supply_pubkey != liquidity_user_account.key(),
         ErrorCode::InvalidDestinationOfLiquidity
     );
+
 
     // require!(reserve.last_update.is_stale(clock.slot) == false, ErrorCode::ReserveStale); //Keep this commented out for now until _refresh_reserve_interest gets implemented
 

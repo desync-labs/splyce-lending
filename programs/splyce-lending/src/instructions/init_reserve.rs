@@ -217,9 +217,9 @@ pub fn handle_init_reserve(
         token_program.to_account_info(),
         ctx.accounts.collateral_mint_account.to_account_info(),
         ctx.accounts.collateral_user_account.to_account_info(),
-        ctx.accounts.lending_market.to_account_info(), // Correct authority
+        ctx.accounts.lending_market.to_account_info(), // Authority
         collateral_amount,
-        seeds, // Correct signer seeds
+        seeds, // signer seeds
     )?;
     msg!("Collateral tokens minted");
 

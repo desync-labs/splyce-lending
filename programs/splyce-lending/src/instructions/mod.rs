@@ -4,6 +4,7 @@ pub mod init_reserve;
 pub mod init_mock_pyth_feed;
 pub mod update_reserve_config;
 pub mod redeem_reserve_collateral;
+pub mod deposit_reserve_liquidity;
 
 
 pub use init_lending_market::*;
@@ -12,3 +13,4 @@ pub use init_reserve::*;
 pub use init_mock_pyth_feed::*;
 pub use update_reserve_config::*;
 pub use redeem_reserve_collateral::*;
+pub use deposit_reserve_liquidity::*;

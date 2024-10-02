@@ -80,4 +80,12 @@ pub mod splyce_lending {
         msg!("Instruction: redeem_reserve_collateral");
         handle_redeem_reserve_collateral(ctx, collateral_amount)
     }
+
+    pub fn deposit_reserve_liquidity(
+        ctx: Context<DepositLiquidity>,
+        liquidity_amount: u64,
+    ) -> Result<()> {
+        msg!("Instruction: deposit_reserve_liquidity");
+        handle_deposit_reserve_liquidity(ctx, liquidity_amount)
+    }
 }
