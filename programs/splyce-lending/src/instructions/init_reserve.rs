@@ -25,6 +25,8 @@ pub struct ReserveInit<'info> {
 
     pub lending_market: Account<'info, LendingMarket>,
 
+    //It is extremely important that no collateral_mint_account should be repeated in other reserves
+    //Use Keypair account for below collateral_mint_account.
     #[account(
         init,
         payer = signer,
