@@ -24,7 +24,6 @@ const keyBuffer = key.toArrayLike(Buffer, 'le', 8);
 
 console.log("Client Key Buffer (Hex):", keyBuffer.toString('hex'));
 
-
 async function airdropSol(publicKey, amount) {
   let airdropTx = await anchor.getProvider().connection.requestAirdrop(publicKey, amount * anchor.web3.LAMPORTS_PER_SOL);
   await confirmTransaction(airdropTx);
@@ -140,6 +139,74 @@ async function wrapSOL(provider: anchor.AnchorProvider, amount: number): Promise
     console.error("Error wrapping SOL into WSOL:", error);
     throw error;
   }
+}
+
+async function wrapSOL2(
+  provider: anchor.AnchorProvider,
+  payer: Keypair,
+  amount: number
+): Promise<PublicKey> {
+  const connection = provider.connection;
+  const lamports = amount * LAMPORTS_PER_SOL;
+  console.log(`Wrapping ${amount} SOL (${lamports} lamports)`);
+
+  const wsolTokenAccount = await getAssociatedTokenAddress(
+    wrappedSolMint,
+    payer.publicKey,
+    false,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID
+  );
+
+  console.log(`WSOL Associated Token Account: ${wsolTokenAccount.toBase58()}`);
+
+  // Check if the associated token account already exists
+  const accountInfo = await connection.getAccountInfo(wsolTokenAccount);
+  const transaction = new Transaction();
+  if (!accountInfo) {
+    console.log("Associated token account does not exist. Creating...");
+    transaction.add(
+      createAssociatedTokenAccountInstruction(
+        payer.publicKey,    // Payer
+        wsolTokenAccount,   // Associated token account
+        payer.publicKey,    // Owner
+        wrappedSolMint      // Mint
+      )
+    );
+  } else {
+    console.log("Associated token account already exists.");
+  }
+
+  // Transfer lamports to the WSOL token account to wrap SOL
+  console.log(`Transferring ${lamports} lamports to WSOL token account...`);
+  transaction.add(
+    SystemProgram.transfer({
+      fromPubkey: payer.publicKey,
+      toPubkey: wsolTokenAccount,
+      lamports,
+    })
+  );
+
+  // Synchronize the native balance of the WSOL account
+  console.log("Synchronizing native balance of WSOL account...");
+  transaction.add(createSyncNativeInstruction(wsolTokenAccount));
+
+  // Set the fee payer
+  transaction.feePayer = payer.publicKey;
+
+  // Fetch recent blockhash
+  const { blockhash } = await connection.getLatestBlockhash("confirmed");
+  transaction.recentBlockhash = blockhash;
+
+  // Sign the transaction with the payer's Keypair
+  transaction.sign(payer);
+
+  // Send the transaction
+  const txid = await connection.sendRawTransaction(transaction.serialize());
+  await connection.confirmTransaction(txid);
+
+  console.log(`Wrapped ${amount} SOL into WSOL at ${wsolTokenAccount.toBase58()} with signature ${txid}`);
+  return wsolTokenAccount;
 }
 
 
@@ -1387,12 +1454,12 @@ describe("splyce-lending", () => {
   
       // 2. Wrap SOL into WSOL for Secondary User
       const wrapAmount = 1; // Amount of SOL to wrap
-      const wsolTokenAccount = await wrapSOL(provider, wrapAmount);
+      const wsolTokenAccount = await wrapSOL2(provider, secondaryUser, wrapAmount);
       console.log(`WSOL Account for Secondary User: ${wsolTokenAccount.toBase58()}`);
   
       // 3. Derive Necessary PDAs
       const [lendingMarketPDA, _lendingMarketBump] = await PublicKey.findProgramAddress(
-        [secondaryUser.publicKey.toBuffer()],
+        [provider.wallet.publicKey.toBuffer()],
         program.programId
       );
   
@@ -1425,19 +1492,24 @@ describe("splyce-lending", () => {
       // Create the collateral ATA if it doesn't exist
       const collateralATAInfo = await provider.connection.getAccountInfo(collateralUserAccount);
       if (!collateralATAInfo) {
+        console.log("Collateral ATA does not exist. Creating...");
         const createCollateralATAIx = createAssociatedTokenAccountInstruction(
-          secondaryUser.publicKey,      // Payer
-          collateralUserAccount,        // ATA
-          secondaryUser.publicKey,      // Owner
-          collateralMintPubkey          // Mint
+          secondaryUser.publicKey, // Payer
+          collateralUserAccount,   // ATA
+          secondaryUser.publicKey, // Owner
+          collateralMintPubkey     // Mint
         );
-  
+
         const tx = new Transaction().add(createCollateralATAIx);
-        await provider.connection.sendTransaction(tx, [secondaryUser], { skipPreflight: false, preflightCommitment: "confirmed" });
+        // Send the transaction signed by the secondary user
+        await provider.sendAndConfirm(tx, [secondaryUser]);
         console.log("Collateral ATA created for Secondary User.");
       } else {
         console.log("Collateral ATA already exists for Secondary User.");
       }
+      console.log("Collateral ATA for Secondary User:", collateralUserAccount.toBase58());
+      const collateralATAInfoAfterCreation = await provider.connection.getAccountInfo(collateralUserAccount);
+      console.log("Collateral ATA Info After Creation:", collateralATAInfoAfterCreation);
   
       // 5. Provide WSOL as Liquidity
       // Define the liquidity amount to deposit (e.g., 0.5 SOL)
@@ -1450,7 +1522,7 @@ describe("splyce-lending", () => {
         )
         .accounts({
           liquidityUserAccount: wsolTokenAccount,             // Secondary user's WSOL account
-          collateralUserAccount: collateralUserAccount,      // Secondary user's Collateral (LP) Token account
+          collateralUserAccount: collateralUserAccount,       // Secondary user's Collateral (LP) Token account
           reserve: reservePDA,
           liquidityReserveAccount: reserveAccount.liquidity.supplyPubkey,
           collateralMintAccount: collateralMintPubkey,
@@ -1460,7 +1532,7 @@ describe("splyce-lending", () => {
           tokenProgram: TOKEN_PROGRAM_ID,
           rent: anchor.web3.SYSVAR_RENT_PUBKEY,
         })
-        .signers([secondaryUser])
+        .signers([secondaryUser]) // Include secondary user in signers
         .rpc();
   
       console.log("Deposit Reserve Liquidity Transaction successful.");
@@ -1494,6 +1566,9 @@ describe("splyce-lending", () => {
         reserveAccountAfter.lastUpdate.stale,
         "Reserve last update should be marked as stale after deposit."
       );
+
+      const wsolBalanceAfter = await provider.connection.getTokenAccountBalance(wsolTokenAccount);
+      console.log("WSOL Balance After Deposit:", wsolBalanceAfter);
   
     } catch (error) {
       console.error("Error during deposit_reserve_liquidity as secondary user test:", error);

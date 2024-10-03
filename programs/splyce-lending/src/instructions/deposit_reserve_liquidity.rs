@@ -14,6 +14,8 @@ pub struct DepositReserveLiquidity<'info> {
     #[account(mut)]
     pub liquidity_user_account: Account<'info, TokenAccount>, //where the liquidity token (ex WSOL) sits in the user's account, source of the liquidity token in the deposit
 
+    //this ATA should be initialized by the signer prior to calling this instruction
+    //we don't init_if_needed due to security reasons
     #[account(mut)]
     pub collateral_user_account: Account<'info, TokenAccount>, //user's collateral account, destionation where the LP token would be minted to
 
@@ -109,7 +111,7 @@ pub fn handle_deposit_reserve_liquidity(
     transfer_token_to(
         token_program.to_account_info(),
         liquidity_user_account.to_account_info(), //source
-        collateral_user_account.to_account_info(), //destination
+        liquidity_reserve_account.to_account_info(), //destination
         signer.to_account_info(),
         liquidity_amount,
     )?;
