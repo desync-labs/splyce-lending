@@ -1,5 +1,7 @@
 use crate::state::*;
-use crate::utils::token::*;
+// use crate::utils::token::*;
+// use crate::utils::_refresh_reserve_interest::*;
+use crate::utils::{token::*, _refresh_reserve_interest::*};
 use crate::error::ErrorCode;
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, Mint, Burn, TokenAccount};
@@ -57,6 +59,8 @@ pub fn handle_deposit_reserve_liquidity(
     let lending_market = &mut ctx.accounts.lending_market;
     let signer = &ctx.accounts.signer;
     let token_program = &ctx.accounts.token_program;
+
+    // _refresh_reserve_interest(reserve, clock)?;
 
     require!(
         reserve.lending_market == lending_market.key(),
