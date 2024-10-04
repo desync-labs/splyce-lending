@@ -2,6 +2,7 @@ use super::*;
 use anchor_lang::prelude::*;
 //TODO change error to Anchor error
 use crate::error::ErrorCode;
+use crate::utils::math::*;
 use std::result::Result as StdResult; // Alias standard Result to avoid confusion
 use std::convert::TryInto;
 
@@ -152,40 +153,39 @@ impl Reserve {
 
     /// Convert USD to liquidity tokens.
     /// eg how much SOL can you get for 100USD?
-    pub fn usd_to_liquidity_amount_lower_bound(
-        &self,
-        quote_amount: u128,
-    ) -> Result<u128> {
-        let decimals = (10u128).checked_pow(self.liquidity.mint_decimals as u32)
-            .ok_or(ErrorCode::MathOverflow)?;
-        let upper_bound = self.price_upper_bound();
-        quote_amount.checked_mul(decimals)
-            .ok_or(ErrorCode::MathOverflow)?
-            .checked_div(upper_bound)
-            .ok_or(ErrorCode::MathOverflow.into())
-    }
+pub fn usd_to_liquidity_amount_lower_bound(
+    &self,
+    quote_amount: u128,
+) -> Result<u128> {
+    let decimals = pow10(self.liquidity.mint_decimals as u32)?;
+    let upper_bound = self.price_upper_bound();
+    quote_amount
+        .checked_mul(decimals)
+        .ok_or(ErrorCode::MathOverflow)?
+        .checked_div(upper_bound)
+        .ok_or(ErrorCode::MathOverflow.into())
+}
 
     /// find current market value of tokens
     pub fn market_value(&self, liquidity_amount: u128) -> Result<u128> {
-        self.liquidity.market_price.checked_mul(liquidity_amount)
+        let decimals = pow10(self.liquidity.mint_decimals as u32)?;
+        self.liquidity.market_price
+            .checked_mul(liquidity_amount)
             .ok_or(ErrorCode::MathOverflow)?
-            .checked_div((10u128).checked_pow(self.liquidity.mint_decimals as u32)
-            .ok_or(ErrorCode::MathOverflow)?)
+            .checked_div(decimals)
             .ok_or(ErrorCode::MathOverflow.into())
     }
-
     /// find the current upper bound market value of tokens.
     /// ie max(market_price, smoothed_market_price, extra_market_price) * liquidity_amount
     pub fn market_value_upper_bound(
         &self,
         liquidity_amount: u128,
     ) -> Result<u128> {
-        self.price_upper_bound() //u128 decimal 9
-            .checked_mul(liquidity_amount) //u128 decimal 9
+        let decimals = pow10(self.liquidity.mint_decimals as u32)?;
+        self.price_upper_bound()
+            .checked_mul(liquidity_amount)
             .ok_or(ErrorCode::MathOverflow)?
-            .checked_div((10u128) //2024-10-01 is this the right approach, when the price is with 9 decimal, and also the liquidity amount is with 9 decimal???
-                .checked_pow(self.liquidity.mint_decimals as u32) //decimal 9
-                .ok_or(ErrorCode::MathOverflow)?)
+            .checked_div(decimals)
             .ok_or(ErrorCode::MathOverflow.into())
     }
 
@@ -195,12 +195,11 @@ impl Reserve {
         &self,
         liquidity_amount: u128,
     ) -> Result<u128> {
+        let decimals = pow10(self.liquidity.mint_decimals as u32)?;
         self.price_lower_bound()
             .checked_mul(liquidity_amount)
             .ok_or(ErrorCode::MathOverflow)?
-            .checked_div((10u128)
-                .checked_pow(self.liquidity.mint_decimals as u32)
-                .ok_or(ErrorCode::MathOverflow)?)
+            .checked_div(decimals)
             .ok_or(ErrorCode::MathOverflow.into())
     }
 
@@ -369,7 +368,8 @@ impl Reserve {
 
     /// Update borrow rate and accrue interest
     pub fn accrue_interest(&mut self, current_slot: Slot) -> Result<()> {
-        let slots_elapsed = self.last_update.slots_elapsed(current_slot)?;
+        let slots_elapsed = self.last_update.slots_elapsed(current_slot)?; //there is MathOverflow here
+        // msg!("slots_elapsed: {}", slots_elapsed); //debug passed
         if slots_elapsed > 0 {
             let current_borrow_rate = self.current_borrow_rate()?;
             let take_rate = self.config.protocol_take_rate as u128 * PERCENT_SCALER as u128;
@@ -924,14 +924,12 @@ impl ReserveLiquidity {
             .checked_div(SLOTS_PER_YEAR.into())
             .ok_or(ErrorCode::MathOverflow)?;
     
-        // Since rates are scaled, we need to adjust the calculations
-        let compounded_interest_rate = (WAD as u128)
-            .checked_add(slot_interest_rate)
-            .ok_or(ErrorCode::MathOverflow)?
-            .checked_pow(slots_elapsed as u32)
-            .ok_or(ErrorCode::MathOverflow)?
-            .checked_div((WAD as u128).checked_pow(slots_elapsed as u32).ok_or(ErrorCode::MathOverflow)?)
-            .ok_or(ErrorCode::MathOverflow)?;
+        // Compute the compounded interest rate using exponentiation by squaring
+        let compounded_interest_rate = pow_decimal(
+            WAD as u128 + slot_interest_rate,
+            slots_elapsed,
+            WAD as u128,
+        )?;
     
         // Update the cumulative borrow rate with compounded interest
         self.cumulative_borrow_rate_wads = self

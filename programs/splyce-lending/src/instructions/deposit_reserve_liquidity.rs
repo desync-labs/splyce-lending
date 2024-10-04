@@ -60,7 +60,7 @@ pub fn handle_deposit_reserve_liquidity(
     let signer = &ctx.accounts.signer;
     let token_program = &ctx.accounts.token_program;
 
-    // _refresh_reserve_interest(reserve, clock)?;
+    _refresh_reserve_interest(reserve, clock)?;
 
     require!(
         reserve.lending_market == lending_market.key(),

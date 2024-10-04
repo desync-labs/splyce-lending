@@ -6,6 +6,7 @@ pub fn _refresh_reserve_interest(
     clock: &Clock,
 ) -> Result<()> {
     msg!("Refresh reserve interest");
+    // msg!("clock.slot: {:?}", clock.slot);
     reserve.accrue_interest(clock.slot)?;
     msg!("Reserve interest accrued");
     reserve.last_update.update_slot(clock.slot);

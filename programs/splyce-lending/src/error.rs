@@ -83,4 +83,82 @@ pub enum ErrorCode {
 
     #[msg("Invalid Total Supply")]
     InvalidTotalSupply,
+
+    #[msg("MathOverflow2")]
+    MathOverflow2,
+
+    #[msg("MathOverflow3")]
+    MathOverflow3,
+
+    #[msg("MathOverflow4")]
+    MathOverflow4,
+
+    #[msg("MathOverflow5")]
+    MathOverflow5,
+
+    #[msg("MathOverflow6")]
+    MathOverflow6,
+
+    #[msg("MathOverflow7")]
+    MathOverflow7,
+
+    #[msg("MathOverflow8")]
+    MathOverflow8,
+
+    #[msg("MathOverflow9")]
+    MathOverflow9,
+
+    #[msg("MathOverflow10")]
+    MathOverflow10,
+
+    #[msg("MathOverflow11")]
+    MathOverflow11,
+
+    #[msg("MathOverflow12")]
+    MathOverflow12,
+
+    #[msg("MathOverflow13")]
+    MathOverflow13,
+
+    #[msg("MathOverflow14")]
+    MathOverflow14,
+
+    #[msg("MathOverflow15")]
+    MathOverflow15,
+
+    #[msg("MathOverflow16")]
+    MathOverflow16,
+
+    #[msg("MathOverflow17")]
+    MathOverflow17,
+
+    #[msg("MathOverflow18")]
+    MathOverflow18,
+
+    #[msg("MathOverflow19")]
+    MathOverflow19,
+
+    #[msg("MathOverflow20")]
+    MathOverflow20,
+
+    #[msg("MathOverflow21")]
+    MathOverflow21,
+
+    #[msg("MathOverflow22")]
+    MathOverflow22,
+
+    #[msg("MathOverflow23")]
+    MathOverflow23,
+
+    #[msg("MathOverflow24")]
+    MathOverflow24,
+
+    #[msg("MathOverflow25")]
+    MathOverflow25,
+
+    #[msg("MathOverflow26")]
+    MathOverflow26,
+
+    #[msg("MathOverflow27")]
+    MathOverflow27,
 }
