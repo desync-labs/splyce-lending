@@ -63,6 +63,15 @@ pub mod splyce_lending {
         handle_init_mock_pyth_feed(ctx, initial_price, expo)
     }
 
+    pub fn update_mock_pyth_price(
+        ctx: Context<UpdateMockPythPrice>,
+        price: u64,
+        expo: u32,
+    ) -> Result<()> {
+        msg!("Instruction: update_mock_pyth_price");
+        handle_update_mock_pyth_price(ctx, price, expo)
+    }
+
     pub fn init_update_reserve_config(
         ctx: Context<ReserveConfigUpdate>,
         config: ReserveConfig,
@@ -87,5 +96,13 @@ pub mod splyce_lending {
     ) -> Result<()> {
         msg!("Instruction: deposit_reserve_liquidity");
         handle_deposit_reserve_liquidity(ctx, liquidity_amount)
+    }
+
+    pub fn refresh_reserve(
+        ctx: Context<RefreshReserve>,
+        is_test: bool,
+    ) -> Result<()> {
+        msg!("Instruction: refresh_reserve");
+        handle_refresh_reserve(ctx, is_test)
     }
 }
