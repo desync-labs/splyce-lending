@@ -11,7 +11,6 @@ use std::mem::size_of;
 
 /// Reserve context
 #[derive(Accounts)]
-// #[instruction(liquidity_amount: u64, key: u64)] //instruction arg probably not needed but leave it for now
 pub struct DepositReserveLiquidity<'info> {
     #[account(mut)]
     pub liquidity_user_account: Account<'info, TokenAccount>, //where the liquidity token (ex WSOL) sits in the user's account, source of the liquidity token in the deposit

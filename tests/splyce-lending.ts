@@ -1579,4 +1579,85 @@ describe("splyce-lending", () => {
   xit("TODO-deposit_reserve_liquidity reverts as it reaches limit", async () => {
     //TODO: Implement this test
   }); 
+
+  it("refresh_reserve updates liquidity.market_price when mock_pyth_feed price changes", async () => {
+    // Fetch the reserve PDA
+    const key = new anchor.BN(1);
+    const keyBuffer = key.toArrayLike(Buffer, 'le', 8);
+  
+    const [reservePDA, reserveBump] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from("reserve"),
+        keyBuffer,
+        provider.wallet.publicKey.toBuffer(),
+      ],
+      program.programId
+    );
+  
+    // Fetch the reserve account before the price update
+    const reserveAccountBefore = await program.account.reserve.fetch(reservePDA);
+  
+    // Get the mock_pyth_feed address from the reserve
+    const mockPythFeedPubkey = reserveAccountBefore.mockPythFeed;
+  
+    // Fetch the mock_pyth_feed account
+    const mockPythFeedAccount = await program.account.mockPythPriceFeed.fetch(mockPythFeedPubkey);
+  
+    // Fetch the current price from mock_pyth_feed
+    const currentPriceBefore = mockPythFeedAccount.price.toNumber();
+    const currentExpoBefore = mockPythFeedAccount.expo;
+  
+    console.log(`MockPythFeed Price before update: ${currentPriceBefore}, Exponent: ${currentExpoBefore}`);
+  
+    // Update the price in mock_pyth_feed
+    const newPrice = currentPriceBefore + (10 * LAMPORTS_PER_SOL); // Increase price by 10 SOL
+    const newExpo = currentExpoBefore; // Keep the exponent the same
+  
+    // Call the update_mock_pyth_price instruction
+    await program.methods
+      .updateMockPythPrice(
+        new anchor.BN(newPrice),
+        newExpo
+      )
+      .accounts({
+        mockPythFeed: mockPythFeedPubkey,
+        signer: provider.wallet.publicKey,
+      })
+      .rpc();
+  
+    console.log(`Updated MockPythFeed Price to: ${newPrice}`);
+  
+    // Fetch the reserve account before refresh
+    const reserveAccountBeforeRefresh = await program.account.reserve.fetch(reservePDA);
+    const liquidityMarketPriceBefore = reserveAccountBeforeRefresh.liquidity.marketPrice.toString();
+  
+    console.log(`Reserve Liquidity Market Price before refresh: ${liquidityMarketPriceBefore}`);
+  
+    // Call handle_refresh_reserve instruction
+    await program.methods
+      .refreshReserve(
+        true // is_test
+      )
+      .accounts({
+        reserve: reservePDA,
+        signer: provider.wallet.publicKey,
+        mockPythFeed: mockPythFeedPubkey,
+      })
+      .rpc();
+  
+    console.log("Called refresh_reserve");
+  
+    // Fetch the reserve account after refresh
+    const reserveAccountAfterRefresh = await program.account.reserve.fetch(reservePDA);
+    const liquidityMarketPriceAfter = reserveAccountAfterRefresh.liquidity.marketPrice.toString();
+  
+    console.log(`Reserve Liquidity Market Price after refresh: ${liquidityMarketPriceAfter}`);
+  
+    // Assert that the liquidity.market_price has been updated to the new price
+    assert.equal(
+      liquidityMarketPriceAfter,
+      newPrice.toString(),
+      "Reserve liquidity.market_price should be updated to the new price"
+    );
+  });
 });

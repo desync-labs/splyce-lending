@@ -9,7 +9,6 @@ use std::mem::size_of;
 
 /// Reserve context
 #[derive(Accounts)]
-// #[instruction(liquidity_amount: u64, key: u64)] //instruction arg probably not needed but leave it for now
 pub struct RedeemCollateral<'info> {
     #[account(mut)]
     pub collateral_user_account: Account<'info, TokenAccount>, //user's collateral account, from where the LP token would be burned

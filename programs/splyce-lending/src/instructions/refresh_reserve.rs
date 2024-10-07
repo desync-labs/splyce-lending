@@ -9,7 +9,6 @@ use std::mem::size_of;
 
 /// Reserve context
 #[derive(Accounts)]
-#[instruction(liquidity_amount: u64, key: u64)]
 pub struct RefreshReserve<'info> {
     #[account(mut)]
     pub reserve: Box<Account<'info, Reserve>>,
