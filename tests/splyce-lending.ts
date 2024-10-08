@@ -1660,4 +1660,81 @@ describe("splyce-lending", () => {
       "Reserve liquidity.market_price should be updated to the new price"
     );
   });
+
+  it("init_obligation", async () => {
+    try {
+      // 1) Initialize Lending Market (if not already initialized)
+      const [lendingMarketPDA, lendingMarketBump] = await PublicKey.findProgramAddress(
+        [provider.wallet.publicKey.toBuffer()],
+        program.programId
+      );
+  
+      // Check if the lending market account exists; if not, initialize it
+      let lendingMarketAccount;
+      try {
+        lendingMarketAccount = await program.account.lendingMarket.fetch(lendingMarketPDA);
+        console.log("Lending Market already initialized.");
+      } catch (e) {
+        // If not, stop
+        console.log("Lending Market not initialized. Please initialize it first.");
+        throw e;
+      }
+  
+      // 2) Derive the Obligation PDA
+      const key = new anchor.BN(1); // Using key = 1 for example
+      const keyBuffer = key.toArrayLike(Buffer, "le", 8);
+  
+      const [obligationPDA, obligationBump] = await PublicKey.findProgramAddress(
+        [Buffer.from("obligation"), keyBuffer, provider.wallet.publicKey.toBuffer()],
+        program.programId
+      );
+  
+      // 3) Call the init_obligation instruction
+      await program.methods
+        .initObligation(key)
+        .accounts({
+          obligation: obligationPDA,
+          lendingMarket: lendingMarketPDA,
+          signer: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .rpc();
+  
+      console.log("Obligation initialized.");
+  
+      // 4) Fetch the Obligation account and verify
+      const obligationAccount = await program.account.obligation.fetch(obligationPDA);
+  
+      // 5) Assertions to verify that the obligation has been initialized correctly
+      assert.strictEqual(obligationAccount.version, 1, "Incorrect version");
+      assert.isTrue(
+        obligationAccount.lendingMarket.equals(lendingMarketPDA),
+        "Lending market mismatch"
+      );
+      assert.isTrue(
+        obligationAccount.owner.equals(provider.wallet.publicKey),
+        "Owner mismatch"
+      );
+      assert.strictEqual(obligationAccount.deposits.length, 0, "Deposits should be empty");
+      assert.strictEqual(obligationAccount.borrows.length, 0, "Borrows should be empty");
+      assert.strictEqual(
+        obligationAccount.borrowedValue.toNumber(),
+        0,
+        "Borrowed value should be zero"
+      );
+      assert.strictEqual(
+        obligationAccount.depositedValue.toNumber(),
+        0,
+        "Deposited value should be zero"
+      );
+      assert.isAbove(obligationAccount.lastUpdate.slot.toNumber(), 0, "Slot should be set");
+  
+      console.log("Obligation account verified.");
+    } catch (error) {
+      console.error("Error during init_obligation test:", error);
+      throw error;
+    }
+  });
 });
