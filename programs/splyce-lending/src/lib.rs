@@ -105,4 +105,12 @@ pub mod splyce_lending {
         msg!("Instruction: refresh_reserve");
         handle_refresh_reserve(ctx, is_test)
     }
+
+    pub fn init_obligation(
+        ctx: Context<ObligationInit>,
+        key: u64,
+    ) -> Result<()> {
+        msg!("Instruction: init_obligation");
+        handle_init_obligation(ctx, key)
+    }
 }

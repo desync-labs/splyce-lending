@@ -74,6 +74,23 @@ pub enum ErrorCode {
     #[msg("Invalid Destination Of Collateral")]
     InvalidDestinationOfCollateral,
 
+    #[msg("Division by zero")]
+    DivisionByZero,
+
+    #[msg("Obligation Deposits Empty")]
+    ObligationDepositsEmpty,
+
+    #[msg("Obligation Borrows Empty")]
+    ObligationBorrowsEmpty,
+
+    #[msg("Invalid Obligation Liquidity")]
+    InvalidObligationLiquidity,
+
+    #[msg("Invalid Obligation Collateral")]
+    InvalidObligationCollateral,
+
+    #[msg("Obligation Reserve Limit")]
+    ObligationReserveLimit,
 
     #[msg("Deposit Over Limit")]
     DepositedOverLimit,
@@ -83,6 +100,9 @@ pub enum ErrorCode {
 
     #[msg("Invalid Total Supply")]
     InvalidTotalSupply,
+
+    #[msg("Negative Interest Rate")]
+    NegativeInterestRate,
 
     #[msg("MathOverflow2")]
     MathOverflow2,

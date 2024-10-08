@@ -5,12 +5,14 @@ pub mod reserve;
 pub mod mock_pyth_price_feed;
 pub mod last_update;
 pub mod bernanke;
+pub mod obligation;
 
 pub use lending_market::*;
 pub use rate_limiter::*;
 pub use reserve::*;
 pub use scaler::*;
 pub use bernanke::*;
+pub use obligation::*;
 
 pub use mock_pyth_price_feed::*;
 pub use last_update::*;

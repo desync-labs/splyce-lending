@@ -1,15 +1,19 @@
+use super::*;
+
 use anchor_lang::prelude::*;
 use crate::error::ErrorCode;
 use crate::scaler::{WAD, PERCENT_SCALER};
 use crate::utils::math::*;
 use std::cmp::{min};
+use solana_program::slot_history::Slot;
+
 
 /// Max number of collateral and liquidity reserve accounts combined for an obligation
 pub const MAX_OBLIGATION_RESERVES: usize = 10;
 
 /// Lending market obligation state
 #[account]
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Obligation {
     pub version: u8,
     pub last_update: LastUpdate,
@@ -26,6 +30,7 @@ pub struct Obligation {
     pub super_unhealthy_borrow_value: u128,
     pub borrowing_isolated_asset: bool,
     pub closeable: bool,
+    pub key: u64, // Key for creating PDA
 }
 
 // Fixed-size fields in bytes
@@ -36,7 +41,8 @@ const OBLIGATION_FIXED_LEN: usize = 1    // version: u8
     + 32  // owner: Pubkey
     + (16 * 7) // Seven u128 fields
     + 1   // borrowing_isolated_asset: bool
-    + 1;  // closeable: bool
+    + 1  // closeable: bool
+    + 8;  // key: u64
 
 // TODO, later decide how many deposits and borrows to allow
 pub const MAX_OBLIGATION_DEPOSITS: usize = 10;
@@ -78,6 +84,7 @@ impl Obligation {
         self.owner = params.owner;
         self.deposits = params.deposits;
         self.borrows = params.borrows;
+        self.key = params.key;
     }
 
     pub fn loan_to_value(&self) -> Result<u128> {
@@ -167,7 +174,7 @@ impl Obligation {
     pub fn remaining_borrow_value(&self) -> Result<u128> {
         self.allowed_borrow_value
             .checked_sub(self.borrowed_value_upper_bound)
-            .ok_or(ErrorCode::MathOverflow)
+            .ok_or(ErrorCode::MathOverflow.into())
     }
 
     /// Calculate the maximum liquidation amount for a given liquidity
@@ -205,14 +212,14 @@ impl Obligation {
     pub fn find_collateral_in_deposits(
         &self,
         deposit_reserve: Pubkey,
-    ) -> Result<(&ObligationCollateral, usize), ProgramError> {
+    ) -> Result<(&ObligationCollateral, usize)> {
         if self.deposits.is_empty() {
             msg!("Obligation has no deposits");
-            return Err(LendingError::ObligationDepositsEmpty.into());
+            return Err(ErrorCode::ObligationDepositsEmpty.into());
         }
         let collateral_index = self
             ._find_collateral_index_in_deposits(deposit_reserve)
-            .ok_or(LendingError::InvalidObligationCollateral)?;
+            .ok_or(ErrorCode::InvalidObligationCollateral)?;
         Ok((&self.deposits[collateral_index], collateral_index))
     }
 
@@ -220,7 +227,7 @@ impl Obligation {
     pub fn find_or_add_collateral_to_deposits(
         &mut self,
         deposit_reserve: Pubkey,
-    ) -> Result<&mut ObligationCollateral, ProgramError> {
+    ) -> Result<&mut ObligationCollateral> {
         if let Some(collateral_index) = self._find_collateral_index_in_deposits(deposit_reserve) {
             return Ok(&mut self.deposits[collateral_index]);
         }
@@ -229,7 +236,7 @@ impl Obligation {
                 "Obligation cannot have more than {} deposits and borrows combined",
                 MAX_OBLIGATION_RESERVES
             );
-            return Err(LendingError::ObligationReserveLimit.into());
+            return Err(ErrorCode::ObligationReserveLimit.into());
         }
         let collateral = ObligationCollateral::new(deposit_reserve);
         self.deposits.push(collateral);
@@ -246,14 +253,14 @@ impl Obligation {
     pub fn find_liquidity_in_borrows(
         &self,
         borrow_reserve: Pubkey,
-    ) -> Result<(&ObligationLiquidity, usize), ProgramError> {
+    ) -> Result<(&ObligationLiquidity, usize)> {
         if self.borrows.is_empty() {
             msg!("Obligation has no borrows");
-            return Err(LendingError::ObligationBorrowsEmpty.into());
+            return Err(ErrorCode::ObligationBorrowsEmpty.into());
         }
         let liquidity_index = self
             ._find_liquidity_index_in_borrows(borrow_reserve)
-            .ok_or(LendingError::InvalidObligationLiquidity)?;
+            .ok_or(ErrorCode::InvalidObligationLiquidity)?;
         Ok((&self.borrows[liquidity_index], liquidity_index))
     }
 
@@ -261,14 +268,14 @@ impl Obligation {
     pub fn find_liquidity_in_borrows_mut(
         &mut self,
         borrow_reserve: Pubkey,
-    ) -> Result<(&mut ObligationLiquidity, usize), ProgramError> {
+    ) -> Result<(&mut ObligationLiquidity, usize)> {
         if self.borrows.is_empty() {
             msg!("Obligation has no borrows");
-            return Err(LendingError::ObligationBorrowsEmpty.into());
+            return Err(ErrorCode::ObligationBorrowsEmpty.into());
         }
         let liquidity_index = self
             ._find_liquidity_index_in_borrows(borrow_reserve)
-            .ok_or(LendingError::InvalidObligationLiquidity)?;
+            .ok_or(ErrorCode::InvalidObligationLiquidity)?;
         Ok((&mut self.borrows[liquidity_index], liquidity_index))
     }
 
@@ -276,8 +283,8 @@ impl Obligation {
     pub fn find_or_add_liquidity_to_borrows(
         &mut self,
         borrow_reserve: Pubkey,
-        cumulative_borrow_rate_wads: Decimal,
-    ) -> Result<&mut ObligationLiquidity, ProgramError> {
+        cumulative_borrow_rate_wads: u128,
+    ) -> Result<&mut ObligationLiquidity> {
         if let Some(liquidity_index) = self._find_liquidity_index_in_borrows(borrow_reserve) {
             return Ok(&mut self.borrows[liquidity_index]);
         }
@@ -286,7 +293,7 @@ impl Obligation {
                 "Obligation cannot have more than {} deposits and borrows combined",
                 MAX_OBLIGATION_RESERVES
             );
-            return Err(LendingError::ObligationReserveLimit.into());
+            return Err(ErrorCode::ObligationReserveLimit.into());
         }
         let liquidity = ObligationLiquidity::new(borrow_reserve, cumulative_borrow_rate_wads);
         self.borrows.push(liquidity);
@@ -312,6 +319,8 @@ pub struct InitObligationParams {
     pub deposits: Vec<ObligationCollateral>,
     /// Borrowed liquidity for the obligation, unique by borrow reserve address
     pub borrows: Vec<ObligationLiquidity>,
+    /// key for creating PDA
+    pub key: u64,
 }
 
 /// Obligation collateral state
@@ -335,8 +344,8 @@ impl ObligationCollateral {
         Self {
             deposit_reserve,
             deposited_amount: 0,
-            market_value: Decimal::zero(),
-            attributed_borrow_value: Decimal::zero(),
+            market_value: 0u128,
+            attributed_borrow_value: 0u128,
         }
     }
 
@@ -377,12 +386,12 @@ impl anchor_lang::Space for ObligationLiquidity {
 
 impl ObligationLiquidity {
     /// Create new obligation liquidity
-    pub fn new(borrow_reserve: Pubkey, cumulative_borrow_rate_wads: Decimal) -> Self {
+    pub fn new(borrow_reserve: Pubkey, cumulative_borrow_rate_wads: u128) -> Self {
         Self {
             borrow_reserve,
             cumulative_borrow_rate_wads,
-            borrowed_amount_wads: Decimal::zero(),
-            market_value: Decimal::zero(),
+            borrowed_amount_wads: 0u128,
+            market_value: 0u128,
         }
     }
 
@@ -430,9 +439,3 @@ impl ObligationLiquidity {
         Ok(())
     }
 }
-
-const OBLIGATION_COLLATERAL_LEN: usize = 88; // 32 + 8 + 16 + 32
-const OBLIGATION_LIQUIDITY_LEN: usize = 112; // 32 + 16 + 16 + 16 + 32
-const OBLIGATION_LEN: usize = 1300; // 1 + 8 + 1 + 32 + 32 + 16 + 16 + 16 + 16 + 64 + 1 + 1 + (88 * 1) + (112 * 9)
-                                    // @TODO: break this up by obligation / collateral / liquidity https://git.io/JOCca
-

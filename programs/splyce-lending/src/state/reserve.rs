@@ -1297,17 +1297,6 @@ impl anchor_lang::Space for ReserveType {
     const INIT_SPACE: usize = 8 + 1;
 }
 
-// impl FromStr for ReserveType {
-//     type Err = ProgramError;
-//     fn from_str(input: &str) -> Result<Self> {
-//         match input {
-//             "Regular" => Ok(ReserveType::Regular),
-//             "Isolated" => Ok(ReserveType::Isolated),
-//             _ => Err(ErrorCode::InvalidConfig.into()),
-//         }
-//     }
-// }
-
 impl FromStr for ReserveType {
     type Err = ProgramError;
     fn from_str(input: &str) -> StdResult<Self, Self::Err> {
