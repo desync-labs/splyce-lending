@@ -104,6 +104,9 @@ pub enum ErrorCode {
     #[msg("Negative Interest Rate")]
     NegativeInterestRate,
 
+    #[msg("Obligation Not Owned By Signer")]
+    ObligationNotOwnedBySigner,
+
     #[msg("MathOverflow2")]
     MathOverflow2,
 

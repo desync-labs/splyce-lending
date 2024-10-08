@@ -113,4 +113,12 @@ pub mod splyce_lending {
         msg!("Instruction: init_obligation");
         handle_init_obligation(ctx, key)
     }
+
+    pub fn deposit_obligation_collateral(
+        ctx: Context<DepositObligationCollateral>,
+        collateral_amount: u64,
+    ) -> Result<()> {
+        msg!("Instruction: deposit_obligation_collateral");
+        handle_deposit_obligation_collateral(ctx, collateral_amount)
+    }
 }
