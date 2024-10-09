@@ -121,4 +121,12 @@ pub mod splyce_lending {
         msg!("Instruction: deposit_obligation_collateral");
         handle_deposit_obligation_collateral(ctx, collateral_amount)
     }
+
+    pub fn withdraw_obligation_collateral(
+        ctx: Context<WithdrawObligationCollateral>,
+        collateral_amount: u64,
+    ) -> Result<()> {
+        msg!("Instruction: withdraw_obligation_collateral");
+        handle_withdraw_obligation_collateral(ctx, collateral_amount)
+    }
 }

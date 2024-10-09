@@ -56,9 +56,6 @@ pub fn handle_deposit_obligation_collateral(
 
     _refresh_reserve_interest(deposit_reserve, clock)?;
 
-    // after uncommenting below line, adjust test scripts to call refresh_reserve before calling fns with below check
-    // require!(deposit_reserve.last_update.is_stale(clock.slot) == false, ErrorCode::ReserveStale); //Keep this commented out for now until _refresh_reserve_interest gets implemented
-
     //check if the token_program is same as is in the lending_market
     require!(
         lending_market.token_program_id == token_program.key(),
@@ -89,8 +86,9 @@ pub fn handle_deposit_obligation_collateral(
         obligation.owner == signer.key(),
         ErrorCode::ObligationNotOwnedBySigner
     );
-    
 
+    // after uncommenting below line, adjust test scripts to call refresh_reserve before calling fns with below check
+    // require!(deposit_reserve.last_update.is_stale(clock.slot) == false, ErrorCode::ReserveStale); //Keep this commented out for now until _refresh_reserve_interest gets implemented
 
     obligation
     .find_or_add_collateral_to_deposits(deposit_reserve.key())?
@@ -106,7 +104,6 @@ pub fn handle_deposit_obligation_collateral(
     )?;
 
     deposit_reserve.last_update.mark_stale();
-
 
     Ok(())
 }

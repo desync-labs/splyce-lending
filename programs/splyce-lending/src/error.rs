@@ -107,6 +107,15 @@ pub enum ErrorCode {
     #[msg("Obligation Not Owned By Signer")]
     ObligationNotOwnedBySigner,
 
+    #[msg("Obligation Collateral Empty")]
+    ObligationCollateralEmpty,
+
+    #[msg("Withdraw Too Large")]
+    WithdrawTooLarge,
+
+    #[msg("Borrow Attribution Limit Exceeded")]
+    BorrowAttributionLimitExceeded,
+
     #[msg("MathOverflow2")]
     MathOverflow2,
 
