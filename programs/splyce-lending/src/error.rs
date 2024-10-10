@@ -116,6 +116,12 @@ pub enum ErrorCode {
     #[msg("Borrow Attribution Limit Exceeded")]
     BorrowAttributionLimitExceeded,
 
+    #[msg("Invalid Reserve Data")]
+    InvalidReserveData,
+
+    #[msg("Invalid Bool Representation")]
+    InvalidBoolRepresentation,
+
     #[msg("MathOverflow2")]
     MathOverflow2,
 
