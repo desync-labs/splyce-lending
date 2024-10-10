@@ -32,8 +32,8 @@ pub struct WithdrawObligationCollateral<'info> {
     // Remaining accounts: all deposit_reserves that an obligation has deposited into
 }
 
-pub fn handle_withdraw_obligation_collateral(
-    ctx: Context<WithdrawObligationCollateral>,
+pub fn handle_withdraw_obligation_collateral<'info>(
+    ctx: Context<'_, '_, 'info, 'info, WithdrawObligationCollateral<'info>>,
     collateral_amount: u64,
 ) -> Result<()> {
     msg!("Withdraw obligation collateral");
@@ -82,9 +82,6 @@ pub fn handle_withdraw_obligation_collateral(
         ErrorCode::ObligationNotOwnedBySigner
     );
 
-    // Uncomment and adjust as necessary
-    // require!(!withdraw_reserve.last_update.is_stale(clock.slot), ErrorCode::ReserveStale);
-
     // Find the collateral and its index
     let (collateral, collateral_index) =
         obligation.find_collateral_in_deposits(withdraw_reserve.key())?;
@@ -102,8 +99,6 @@ pub fn handle_withdraw_obligation_collateral(
         return Err(ErrorCode::WithdrawTooLarge.into());
     }
 
-    let deposit_reserve_infos = &ctx.remaining_accounts;
-
     // Calculate withdraw value
     let withdraw_value = withdraw_reserve.market_value(
         withdraw_reserve
@@ -119,56 +114,15 @@ pub fn handle_withdraw_obligation_collateral(
         .market_value
         .saturating_sub(withdraw_value);
 
-    let deposited_value = obligation.deposited_value;
-    let unweighted_borrowed_value = obligation.unweighted_borrowed_value;
+    let mut deposit_reserve_accounts: Vec<Account<'info, Reserve>> = ctx
+        .remaining_accounts
+        .iter()
+        .map(|account_info| Account::<Reserve>::try_from(account_info))
+        .collect::<Result<Vec<Account<'info, Reserve>>>>()?;
 
-    // **Process each collateral and its reserve_info directly without collecting into reserve_infos**
-    let mut open_exceeded = None;
-    let mut close_exceeded = None;
-
-    for collateral in &mut obligation.deposits {
-        let reserve_pubkey = collateral.deposit_reserve;
-        let reserve_info = deposit_reserve_infos.iter()
-            .find(|info| info.key() == reserve_pubkey)
-            .ok_or(ErrorCode::InvalidObligationCollateral)?;
-
-        let mut reserve = Account::<Reserve>::try_from(reserve_info)?;
-
-        // Update reserve's attributed borrow value
-        reserve.attributed_borrow_value = reserve
-            .attributed_borrow_value
-            .checked_sub(collateral.attributed_borrow_value)
-            .ok_or(ErrorCode::MathOverflow)?;
-
-        // Update collateral's attributed borrow value
-        if deposited_value > 0 {
-            collateral.attributed_borrow_value = collateral
-                .market_value
-                .checked_mul(unweighted_borrowed_value)
-                .ok_or(ErrorCode::MathOverflow)?
-                .checked_div(deposited_value)
-                .ok_or(ErrorCode::MathOverflow)?;
-        } else {
-            collateral.attributed_borrow_value = 0;
-        }
-
-        // Update reserve's attributed borrow value again
-        reserve.attributed_borrow_value = reserve
-            .attributed_borrow_value
-            .checked_add(collateral.attributed_borrow_value)
-            .ok_or(ErrorCode::MathOverflow)?;
-
-        // Check if borrow attribution limits are exceeded
-        if reserve.attributed_borrow_value > reserve.config.attributed_borrow_limit_open.into() {
-            open_exceeded = Some(collateral.deposit_reserve);
-        }
-        if reserve.attributed_borrow_value > reserve.config.attributed_borrow_limit_close.into() {
-            close_exceeded = Some(collateral.deposit_reserve);
-        }
-
-        // Persist changes to the reserve account data
-        reserve_info.try_borrow_mut_data()?.copy_from_slice(&reserve.try_to_vec()?);
-    }
+    // Update Borrow Attribution Values using Helper Function
+    let (open_exceeded, close_exceeded) =
+        update_borrow_attribution_values(obligation, deposit_reserve_accounts.as_mut_slice())?;
 
     // Check for exceeded limits
     if let Some(reserve_pubkey) = open_exceeded {
@@ -179,7 +133,80 @@ pub fn handle_withdraw_obligation_collateral(
         return Err(ErrorCode::BorrowAttributionLimitExceeded.into());
     }
 
-    // Continue with the rest of your logic...
+    if let Some(reserve_pubkey) = close_exceeded {
+        msg!(
+            "Close borrow attribution limit exceeded for reserve {:?}",
+            reserve_pubkey
+        );
+        return Err(ErrorCode::BorrowAttributionLimitExceeded.into());
+    }
+
+    // Finalize Withdrawal
+    obligation.withdraw(withdraw_amount, collateral_index)?;
+    obligation.last_update.mark_stale();
+
+    transfer_token_to(
+        token_program.to_account_info(),
+        collateral_reserve_account.to_account_info(), // source
+        collateral_user_account.to_account_info(),    // destination
+        signer.to_account_info(),
+        withdraw_amount,
+    )?;
 
     Ok(())
+}
+
+pub fn update_borrow_attribution_values<'info>(
+    obligation: &mut Account<'info, Obligation>,
+    reserve_accounts: &mut [Account<'info, Reserve>],
+) -> Result<(Option<Pubkey>, Option<Pubkey>)> {
+    let mut open_exceeded = None;
+    let mut close_exceeded = None;
+
+    for i in 0..obligation.deposits.len() {
+        let reserve_pubkey = obligation.deposits[i].deposit_reserve;
+
+        // Find the corresponding reserve account
+        let reserve_account = reserve_accounts
+            .iter_mut()
+            .find(|account| account.key() == reserve_pubkey)
+            .ok_or(ErrorCode::InvalidObligationCollateral)?;
+
+        // Directly access the reserve data
+        let reserve = &mut **reserve_account;
+
+        // Update reserve's attributed borrow value
+        reserve.attributed_borrow_value = reserve
+            .attributed_borrow_value
+            .checked_sub(obligation.deposits[i].attributed_borrow_value)
+            .ok_or(ErrorCode::MathOverflow)?;
+
+        // Update collateral's attributed borrow value
+        if obligation.deposited_value > 0 {
+            obligation.deposits[i].attributed_borrow_value = obligation.deposits[i]
+                .market_value
+                .checked_mul(obligation.unweighted_borrowed_value)
+                .ok_or(ErrorCode::MathOverflow)?
+                .checked_div(obligation.deposited_value)
+                .ok_or(ErrorCode::MathOverflow)?;
+        } else {
+            obligation.deposits[i].attributed_borrow_value = 0;
+        }
+
+        // Update reserve's attributed borrow value
+        reserve.attributed_borrow_value = reserve
+            .attributed_borrow_value
+            .checked_add(obligation.deposits[i].attributed_borrow_value)
+            .ok_or(ErrorCode::MathOverflow)?;
+
+        // Check borrow attribution limits
+        if reserve.attributed_borrow_value > reserve.config.attributed_borrow_limit_open.into() {
+            open_exceeded = Some(obligation.deposits[i].deposit_reserve);
+        }
+        if reserve.attributed_borrow_value > reserve.config.attributed_borrow_limit_close.into() {
+            close_exceeded = Some(obligation.deposits[i].deposit_reserve);
+        }
+    }
+
+    Ok((open_exceeded, close_exceeded))
 }
