@@ -1354,11 +1354,28 @@ describe("splyce-lending", () => {
       const liquidityAmountReceivedDecimal = liquidityAmountReceived.toNumber() / Math.pow(10, liquidityDecimals);
       console.log(`Liquidity Amount Received (Decimal): ${liquidityAmountReceivedDecimal}`);
   
-      // 6) Call the redeem_reserve_collateral instruction
-      await program.methods
-        .redeemReserveCollateral(
-          collateralAmountToRedeem
-        )
+      // Check if the reserve is stale before refreshing
+      const reserveAccountBeforeRefresh = await program.account.reserve.fetch(reservePDA);
+      console.log("Is reserve stale before refresh:", reserveAccountBeforeRefresh.lastUpdate.stale);
+
+      // Create a transaction that includes both refresh and redeem instructions
+      const transaction = new anchor.web3.Transaction();
+
+      // Add refresh_reserve instruction
+      const refreshIx = await program.methods
+        .refreshReserve(true) // is_test
+        .accounts({
+          reserve: reservePDA,
+          signer: provider.wallet.publicKey,
+          mockPythFeed: reserveAccountBeforeRefresh.mockPythFeed,
+        })
+        .instruction();
+
+      transaction.add(refreshIx);
+
+      // Add redeem_reserve_collateral instruction
+      const redeemIx = await program.methods
+        .redeemReserveCollateral(collateralAmountToRedeem)
         .accounts({
           reserve: reservePDA,
           lendingMarket: lendingMarketPDA,
@@ -1369,10 +1386,16 @@ describe("splyce-lending", () => {
           signer: signer,
           tokenProgram: TOKEN_PROGRAM_ID,
         })
-        .rpc();
-  
-      console.log("Redeem transaction successful");
-  
+        .instruction();
+      
+      transaction.add(redeemIx);
+      // Send and confirm the transaction
+      const txSignature = await provider.sendAndConfirm(transaction);
+      console.log("Transaction successful. Signature:", txSignature);
+
+      // Check if the reserve is stale after redemption
+      const reserveAccountAfterRedemption = await program.account.reserve.fetch(reservePDA);
+      console.log("Is reserve stale after redemption:", reserveAccountAfterRedemption.lastUpdate.stale);
       // 7) Fetch and Store Balances After Redemption
   
       // Fetch collateral token balance after redemption
