@@ -89,7 +89,7 @@ pub fn handle_deposit_obligation_collateral(
 
     // TODO: Uncomment after implementing refresh_reserve and adjust test scripts to call refresh_reserve before calling this fn
     // require!(
-    //     deposit_reserve.last_update.is_stale(clock.slot) == false,
+    //     deposit_reserve.last_update.is_stale(clock.slot) == Ok(false),
     //     ErrorCode::ReserveStale
     // );
 

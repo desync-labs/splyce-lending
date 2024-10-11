@@ -72,16 +72,23 @@ pub fn handle_withdraw_obligation_collateral<'info>(
         ErrorCode::InvalidSourceOfCollateral
     );
 
+    // require!(
+    //     withdraw_reserve.last_update.is_stale(clock.slot)? == Ok(false),
+    //     ErrorCode::ReserveStale
+    // );
+
     // Validate obligation's lending market and owner
     require!(
         obligation.lending_market == lending_market.key(),
         ErrorCode::InvalidLendingMarketAccount
     );
 
-    require!(
-        obligation.owner == signer.key(),
-        ErrorCode::ObligationNotOwnedBySigner
-    );
+    // require!(
+    //     obligation.owner == signer.key(),
+    //     ErrorCode::ObligationNotOwnedBySigner
+    // );
+
+
 
     // TODO: Uncomment after implementing refresh_obligation
     // require!(

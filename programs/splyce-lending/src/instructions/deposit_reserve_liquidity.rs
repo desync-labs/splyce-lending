@@ -87,7 +87,6 @@ pub fn handle_deposit_reserve_liquidity(
     );
 
 
-    // Keep this commented out for now until _refresh_reserve_interest gets implemented
     require!(
         reserve.last_update.is_stale(clock.slot) == Ok(false),
         ErrorCode::ReserveStale
