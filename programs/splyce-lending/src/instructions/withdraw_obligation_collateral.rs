@@ -83,11 +83,10 @@ pub fn handle_withdraw_obligation_collateral<'info>(
         ErrorCode::InvalidLendingMarketAccount
     );
 
-    // require!(
-    //     obligation.owner == signer.key(),
-    //     ErrorCode::ObligationNotOwnedBySigner
-    // );
-
+    require!(
+        obligation.owner == signer.key(),
+        ErrorCode::ObligationNotOwnedBySigner
+    );
 
 
     // TODO: Uncomment after implementing refresh_obligation
