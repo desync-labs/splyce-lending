@@ -1510,11 +1510,43 @@ describe("splyce-lending", () => {
       console.log("Collateral ATA for Secondary User:", collateralUserAccount.toBase58());
       const collateralATAInfoAfterCreation = await provider.connection.getAccountInfo(collateralUserAccount);
       console.log("Collateral ATA Info After Creation:", collateralATAInfoAfterCreation);
-  
+
       // 5. Provide WSOL as Liquidity
       // Define the liquidity amount to deposit (e.g., 0.5 SOL)
       const liquidityAmount = new anchor.BN(0.5 * LAMPORTS_PER_SOL); // 0.5 SOL in lamports
-  
+
+      // Fetch the reserve account before refresh
+      const reserveAccountBeforeRefresh = await program.account.reserve.fetch(reservePDA);
+    
+      // Check if the reserve is stale before refresh
+      const isStaleBeforeRefresh = reserveAccountBeforeRefresh.lastUpdate.stale;
+      console.log("Is reserve stale before refresh:", isStaleBeforeRefresh);
+
+      // Refresh Reserve before depositing liquidity
+      await program.methods
+        .refreshReserve(
+          true // is_test
+        )
+        .accounts({
+          reserve: reservePDA,
+          signer: provider.wallet.publicKey,
+          mockPythFeed: reserveAccount.mockPythFeed,
+      })
+      .rpc();
+
+      console.log("Called refresh_reserve before deposit");
+
+      // Fetch the reserve account after refresh
+      const reserveAccountAfterRefresh = await program.account.reserve.fetch(reservePDA);
+    
+      // Check if the reserve is stale after refresh
+      const isStaleAfterRefresh = reserveAccountAfterRefresh.lastUpdate.stale;
+      console.log("Is reserve stale after refresh:", isStaleAfterRefresh);
+
+      // Assert that the stale status has changed (it should be false after refresh)
+      assert.notEqual(isStaleBeforeRefresh, isStaleAfterRefresh, "Stale status should change after refresh");
+      assert.isFalse(isStaleAfterRefresh, "Reserve should not be stale after refresh");
+
       // Call the deposit_reserve_liquidity instruction as the secondary user
       await program.methods
         .depositReserveLiquidity(
