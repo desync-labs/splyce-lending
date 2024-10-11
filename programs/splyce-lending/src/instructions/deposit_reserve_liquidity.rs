@@ -102,11 +102,6 @@ pub fn handle_deposit_reserve_liquidity(
         msg!("Cannot deposit liquidity above the reserve deposit limit");
         return Err(ErrorCode::DepositedOverLimit.into());
     }
-    // TODO I think above part better be checked in the test case
-
-    // TODO uncomment below part after _refresh_reserve_interest gets implemented
-    // if things get complicated when moduled out, just include it in this file temporarily
-    // _refresh_reserve_interest(reserve, clock)?;
 
     let collateral_amount = reserve.deposit_liquidity(liquidity_amount)?;
 

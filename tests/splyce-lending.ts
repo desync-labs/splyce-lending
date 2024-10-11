@@ -2030,6 +2030,128 @@ describe("splyce-lending", () => {
     }
   });
 
+  it("deposit_obligation_collateral_succeeds_without_explicit_refresh", async () => {
+    try {
+      // 1. the Lending Market
+      const [lendingMarketPDA, lendingMarketBump] = await PublicKey.findProgramAddress(
+        [provider.wallet.publicKey.toBuffer()],
+        program.programId
+      );
+
+      // 2. the Reserve
+      const reserveKey = new anchor.BN(1);
+      const reserveKeyBuffer = reserveKey.toArrayLike(Buffer, 'le', 8);
+
+      const [reservePDA, reserveBump] = await PublicKey.findProgramAddress(
+        [
+          Buffer.from("reserve"),
+          reserveKeyBuffer,
+          provider.wallet.publicKey.toBuffer(),
+        ],
+        program.programId
+      );
+      const reserveAccount = await program.account.reserve.fetchNullable(reservePDA);
+
+      // 3. the Obligation
+      const obligationKey = new anchor.BN(1);
+      const obligationKeyBuffer = obligationKey.toArrayLike(Buffer, 'le', 8);
+      const [obligationPDA, obligationBump] = await PublicKey.findProgramAddress(
+        [
+          Buffer.from("obligation"),
+          obligationKeyBuffer,
+          provider.wallet.publicKey.toBuffer(),
+        ],
+        program.programId
+      );
+      let obligationAccount = await program.account.obligation.fetchNullable(obligationPDA);
+      console.log("Obligation account:", obligationAccount);
+      // 4. Ensure the user has cTokens (collateral tokens)
+      const collateralMintPubkey = reserveAccount.collateral.mintPubkey;
+      console.log("Collateral mint pubkey:", collateralMintPubkey.toBase58());
+      const collateralUserAccount = await getAssociatedTokenAddress(
+        collateralMintPubkey,
+        provider.wallet.publicKey,
+        false,
+        anchor.web3.TOKEN_PROGRAM_ID,
+        anchor.web3.ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+      // Check the collateral balance before
+      let collateralBalanceBefore = await provider.connection.getTokenAccountBalance(collateralUserAccount);
+      let collateralBalanceBeforeAmount = parseFloat(collateralBalanceBefore.value.uiAmountString || "0");
+      console.log(`Collateral Token Balance before deposit: ${collateralBalanceBeforeAmount} CTokens`);
+
+      // 5. Advance the slot to make the reserve stale
+      // Since STALE_AFTER_SLOTS_ELAPSED is 1, we need to advance at least 2 slots
+      // Sending dummy transactions to advance the slot
+      console.log("Advancing slots to make the reserve stale...");
+      for (let i = 0; i < 2; i++) {
+        const tx = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: provider.wallet.publicKey,
+            toPubkey: provider.wallet.publicKey,
+            lamports: 1, // transferring 1 lamport to self
+          })
+        );
+        await provider.sendAndConfirm(tx, []);
+      }
+      console.log("Advanced slots successfully.");
+
+      // 6. Check if the reserve is stale
+      const currentSlot = await provider.connection.getSlot();
+      const lastUpdateSlot = reserveAccount.lastUpdate.slot.toNumber();
+      const isStale = reserveAccount.lastUpdate.stale;
+      const slotsElapsed = currentSlot - lastUpdateSlot;
+
+      console.log(`Is reserve marked as stale? ${isStale}`);
+      console.log(`Current slot: ${currentSlot}, Last update slot: ${lastUpdateSlot}`);
+      console.log(`Slots elapsed since last update: ${slotsElapsed}`);
+
+      // You can define your own stale condition based on slots elapsed if needed
+      const STALE_AFTER_SLOTS_ELAPSED = 1; // This should match your Rust program's definition
+      const isStaleBySlots = slotsElapsed > STALE_AFTER_SLOTS_ELAPSED;
+
+      console.log(`Is reserve stale based on elapsed slots? ${isStaleBySlots}`);
+
+      if (!isStale) {
+        throw new Error("Reserve should be stale after advancing slots");
+      }
+
+      // 7. Attempt to deposit obligation collateral, expecting failure
+      const collateralAmountToRedeem = (collateralBalanceBeforeAmount / 2); // Attempt to redeem half
+      console.log(`collateralAmountToRedeem: ${collateralAmountToRedeem}`);
+
+      await program.methods
+        .depositObligationCollateral(new anchor.BN(collateralAmountToRedeem * LAMPORTS_PER_SOL))
+        .accounts({
+          collateralUserAccount: collateralUserAccount,
+          collateralReserveAccount: reserveAccount.collateral.supplyPubkey,
+          depositReserve: reservePDA,
+          obligation: obligationPDA,
+          lendingMarket: lendingMarketPDA,
+          signer: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: anchor.web3.TOKEN_PROGRAM_ID,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .rpc();
+
+            // 8. Verify the results
+        const reserveAccountAfter = await program.account.reserve.fetch(reservePDA);
+        const obligationAccountAfter = await program.account.obligation.fetch(obligationPDA);
+
+        console.log(`Reserve state after deposit:`);
+        console.log(`Is reserve marked as stale? ${reserveAccountAfter.lastUpdate.stale}`);
+        console.log(`Last update slot: ${reserveAccountAfter.lastUpdate.slot.toNumber()}`);
+
+        assert.strictEqual(reserveAccountAfter.lastUpdate.stale, true, "Reserve should be stale after deposit");
+
+        console.log("Test passed: deposit_obligation_collateral succeeded with internal refresh.");
+      } catch (error) {
+      console.error("Unexpected error during test:", error);
+      throw error;
+    }
+  });
+
   it("withdraw_obligation_collateral", async () => {
     try {
       // 1) Fetch necessary accounts and PDAs

@@ -87,11 +87,17 @@ pub fn handle_deposit_obligation_collateral(
         ErrorCode::ObligationNotOwnedBySigner
     );
 
-    // TODO: Uncomment after implementing refresh_reserve and adjust test scripts to call refresh_reserve before calling this fn
-    // require!(
-    //     deposit_reserve.last_update.is_stale(clock.slot) == Ok(false),
-    //     ErrorCode::ReserveStale
-    // );
+    msg!("Current slot: {}", clock.slot);
+    msg!("Reserve last update slot: {}", deposit_reserve.last_update.slot);
+    msg!("Reserve stale flag: {}", deposit_reserve.last_update.stale);
+
+    let is_stale = deposit_reserve.last_update.is_stale(clock.slot)?;
+    msg!("Is reserve stale? {}", is_stale);
+
+    require!(
+        deposit_reserve.last_update.is_stale(clock.slot) == Ok(false),
+        ErrorCode::ReserveStale
+    );
 
     obligation
     .find_or_add_collateral_to_deposits(deposit_reserve.key())?
