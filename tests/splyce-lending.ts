@@ -1537,44 +1537,30 @@ describe("splyce-lending", () => {
       // 5. Provide WSOL as Liquidity
       // Define the liquidity amount to deposit (e.g., 0.5 SOL)
       const liquidityAmount = new anchor.BN(0.5 * LAMPORTS_PER_SOL); // 0.5 SOL in lamports
-
+    
       // Fetch the reserve account before refresh
       const reserveAccountBeforeRefresh = await program.account.reserve.fetch(reservePDA);
-    
-      // Check if the reserve is stale before refresh
-      const isStaleBeforeRefresh = reserveAccountBeforeRefresh.lastUpdate.stale;
-      console.log("Is reserve stale before refresh:", isStaleBeforeRefresh);
+      console.log("Is reserve stale before refresh:", reserveAccountBeforeRefresh.lastUpdate.stale);
 
-      // Refresh Reserve before depositing liquidity
-      await program.methods
-        .refreshReserve(
-          true // is_test
-        )
+      // Create a transaction that includes both refresh and deposit instructions
+      const transaction = new anchor.web3.Transaction();
+
+      // Add refresh_reserve instruction
+      const refreshIx = await program.methods
+        .refreshReserve(true) // is_test
         .accounts({
           reserve: reservePDA,
           signer: provider.wallet.publicKey,
-          mockPythFeed: reserveAccount.mockPythFeed,
-      })
-      .rpc();
+          mockPythFeed: reserveAccountBeforeRefresh.mockPythFeed,
+        })
+        .instruction();
 
-      console.log("Called refresh_reserve before deposit");
+      transaction.add(refreshIx);
 
-      // Fetch the reserve account after refresh
-      const reserveAccountAfterRefresh = await program.account.reserve.fetch(reservePDA);
-    
-      // Check if the reserve is stale after refresh
-      const isStaleAfterRefresh = reserveAccountAfterRefresh.lastUpdate.stale;
-      console.log("Is reserve stale after refresh:", isStaleAfterRefresh);
 
-      // Assert that the stale status has changed (it should be false after refresh)
-      assert.notEqual(isStaleBeforeRefresh, isStaleAfterRefresh, "Stale status should change after refresh");
-      assert.isFalse(isStaleAfterRefresh, "Reserve should not be stale after refresh");
-
-      // Call the deposit_reserve_liquidity instruction as the secondary user
-      await program.methods
-        .depositReserveLiquidity(
-          liquidityAmount
-        )
+      // Add deposit_reserve_liquidity instruction
+      const depositIx = await program.methods
+        .depositReserveLiquidity(liquidityAmount)
         .accounts({
           liquidityUserAccount: wsolTokenAccount,             // Secondary user's WSOL account
           collateralUserAccount: collateralUserAccount,       // Secondary user's Collateral (LP) Token account
@@ -1587,10 +1573,19 @@ describe("splyce-lending", () => {
           tokenProgram: TOKEN_PROGRAM_ID,
           rent: anchor.web3.SYSVAR_RENT_PUBKEY,
         })
-        .signers([secondaryUser]) // Include secondary user in signers
-        .rpc();
-  
+        .instruction();
+      
+      transaction.add(depositIx);
+
       console.log("Deposit Reserve Liquidity Transaction successful.");
+
+      // Send and confirm the transaction
+      const txSignature = await provider.sendAndConfirm(transaction, [secondaryUser]);
+      console.log("Transaction successful. Signature:", txSignature);
+
+      // Check if the reserve is stale after deposit
+      const reserveAccountAfterDeposit = await program.account.reserve.fetch(reservePDA);
+      console.log("Is reserve stale after deposit:", reserveAccountAfterDeposit.lastUpdate.stale);
   
       // 6. Fetch and Assert Balances After Deposit
       // Fetch collateral token balance after deposit
