@@ -122,6 +122,9 @@ pub enum ErrorCode {
     #[msg("Invalid Bool Representation")]
     InvalidBoolRepresentation,
 
+    #[msg("Obligation Stale")]
+    ObligationStale,
+
     #[msg("MathOverflow2")]
     MathOverflow2,
 

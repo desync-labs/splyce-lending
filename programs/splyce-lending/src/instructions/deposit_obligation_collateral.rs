@@ -87,8 +87,11 @@ pub fn handle_deposit_obligation_collateral(
         ErrorCode::ObligationNotOwnedBySigner
     );
 
-    // after uncommenting below line, adjust test scripts to call refresh_reserve before calling fns with below check
-    // require!(deposit_reserve.last_update.is_stale(clock.slot) == false, ErrorCode::ReserveStale); //Keep this commented out for now until _refresh_reserve_interest gets implemented
+    // TODO: Uncomment after implementing refresh_reserve and adjust test scripts to call refresh_reserve before calling this fn
+    // require!(
+    //     deposit_reserve.last_update.is_stale(clock.slot) == false,
+    //     ErrorCode::ReserveStale
+    // );
 
     obligation
     .find_or_add_collateral_to_deposits(deposit_reserve.key())?

@@ -83,7 +83,11 @@ pub fn handle_redeem_reserve_collateral(
     );
 
 
-    // require!(reserve.last_update.is_stale(clock.slot) == false, ErrorCode::ReserveStale); //Keep this commented out for now until _refresh_reserve_interest gets implemented
+    // Keep this commented out for now until _refresh_reserve_interest gets implemented
+    // require!(
+    //     reserve.last_update.is_stale(clock.slot) == false,
+    //     ErrorCode::ReserveStale
+    // );
 
     let liquidity_amount = reserve.redeem_collateral(collateral_amount)?;
 
