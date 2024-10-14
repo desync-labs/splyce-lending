@@ -2167,14 +2167,10 @@ describe("splyce-lending", () => {
   
       // Fetch the reserve PDA.
       const key = new anchor.BN(1);
-      const keyBuffer = key.toArrayLike(Buffer, 'le', 8);
+      const keyBuffer = key.toArrayLike(Buffer, "le", 8);
   
       const [reservePDA, reserveBump] = await PublicKey.findProgramAddress(
-        [
-          Buffer.from("reserve"),
-          keyBuffer,
-          provider.wallet.publicKey.toBuffer(),
-        ],
+        [Buffer.from("reserve"), keyBuffer, provider.wallet.publicKey.toBuffer()],
         program.programId
       );
   
@@ -2261,12 +2257,10 @@ describe("splyce-lending", () => {
   
           // Deposit reserve liquidity to get cTokens.
           await program.methods
-            .depositReserveLiquidity(
-              liquidityAmount
-            )
+            .depositReserveLiquidity(liquidityAmount)
             .accounts({
-              liquidityUserAccount: liquidityUserAccount,             // User's WSOL account
-              collateralUserAccount: collateralUserAccount,           // User's Collateral (LP) Token account
+              liquidityUserAccount: liquidityUserAccount, // User's WSOL account
+              collateralUserAccount: collateralUserAccount, // User's Collateral (LP) Token account
               reserve: reservePDA,
               liquidityReserveAccount: reserveAccount.liquidity.supplyPubkey,
               collateralMintAccount: collateralMintPubkey,
@@ -2296,9 +2290,7 @@ describe("splyce-lending", () => {
         console.log(`Depositing ${collateralAmountToDeposit.toString()} cTokens into the obligation.`);
   
         await program.methods
-          .depositObligationCollateral(
-            collateralAmountToDeposit
-          )
+          .depositObligationCollateral(collateralAmountToDeposit)
           .accounts({
             collateralUserAccount: collateralUserAccount,
             collateralReserveAccount: collateralReserveAccountPubkey,
@@ -2341,57 +2333,63 @@ describe("splyce-lending", () => {
       const collateralReserveBalanceBeforeWithdrawAmount = parseFloat(collateralReserveBalanceBeforeWithdraw.value.uiAmountString || "0");
   
       // Fetch all deposit reserves
-      const depositReserves = await Promise.all(
-        obligationAccount.deposits.map(async (deposit) => {
-          return deposit.depositReserve;
-        })
-      );
-
-      console.log("Deposit Reserves:", depositReserves);
+      const depositReserves = obligationAccount.deposits.map((deposit) => deposit.depositReserve);
+  
+      console.log("Deposit Reserves:", depositReserves.map((pk) => pk.toBase58()));
       console.log("Obligation state before withdrawal:");
       console.log("Deposits:", obligationAccount.deposits);
       console.log("Borrows:", obligationAccount.borrows);
-
-      // Refresh reserve
-      // await program.methods.refreshReserve().accounts({
-      //   reserve: reservePDA,
-      //   signer: provider.wallet.publicKey,
-      //   mockPythFeed: reserveAccount.mock_pyth_feed,
-      // }).rpc();
-
-      // console.log("Refreshed reserve done");
-      //Ideally later add refresh obligation
-
-      // 4) Call the withdraw_obligation_collateral instruction
-      await program.methods
-      .withdrawObligationCollateral(
-        collateralAmountToWithdraw
-      )
-      .accounts({
-        collateralUserAccount: collateralUserAccount,
-        collateralReserveAccount: collateralReserveAccountPubkey,
-        withdrawReserve: reservePDA,
-        obligation: obligationPDA,
-        lendingMarket: lendingMarketPDA,
-        signer: provider.wallet.publicKey,
-        systemProgram: SystemProgram.programId,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-      })
-      .remainingAccounts(
-        depositReserves
-        // .filter(reservePDA => !reservePDA.equals(reservePDA)) // Exclude withdrawReserve if necessary
-        .map(reservePDA => ({
-          pubkey: reservePDA,
-          isWritable: true,
-          isSigner: false
-        }))
-      )
-      .rpc();
-
+  
+      // 4) Create a transaction including refreshReserve and withdrawObligationCollateral
+  
+      const transaction = new anchor.web3.Transaction();
+  
+      // Add refreshReserve instruction
+      const refreshReserveIx = await program.methods
+        .refreshReserve(true) // is_test
+        .accounts({
+          reserve: reservePDA,
+          signer: provider.wallet.publicKey,
+          mockPythFeed: reserveAccount.mockPythFeed,
+        })
+        .instruction();
+  
+      transaction.add(refreshReserveIx);
+  
+      // Add withdrawObligationCollateral instruction
+      const withdrawObligationCollateralIx = await program.methods
+        .withdrawObligationCollateral(collateralAmountToWithdraw)
+        .accounts({
+          collateralUserAccount: collateralUserAccount,
+          collateralReserveAccount: collateralReserveAccountPubkey,
+          withdrawReserve: reservePDA,
+          obligation: obligationPDA,
+          lendingMarket: lendingMarketPDA,
+          signer: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .remainingAccounts(
+          depositReserves
+            // Exclude the withdrawReserve from remainingAccounts if necessary
+            // .filter((reservePubkey) => !reservePubkey.equals(reservePDA))
+            .map((reservePubkey) => ({
+              pubkey: reservePubkey,
+              isWritable: true,
+              isSigner: false,
+            }))
+        )
+        .instruction();
+  
+      transaction.add(withdrawObligationCollateralIx);
+  
+      // 5) Send and confirm the transaction
+      await provider.sendAndConfirm(transaction);
+  
       console.log("Withdrawn obligation collateral.");
-      
-      // 5) Verify the results
+  
+      // 6) Verify the results
   
       // Fetch the collateral balance after withdrawal
       const collateralBalanceAfterWithdraw = await provider.connection.getTokenAccountBalance(collateralUserAccount);
@@ -2427,7 +2425,8 @@ describe("splyce-lending", () => {
       const collateralReserveBalanceAfterWithdrawAmount = parseFloat(collateralReserveBalanceAfterWithdraw.value.uiAmountString || "0");
       console.log(`Collateral Reserve Account Balance after withdrawal: ${collateralReserveBalanceAfterWithdrawAmount} CTokens`);
   
-      const expectedCollateralReserveBalanceAfterWithdraw = collateralReserveBalanceBeforeWithdrawAmount - collateralAmountToWithdrawDecimal;
+      const expectedCollateralReserveBalanceAfterWithdraw =
+        collateralReserveBalanceBeforeWithdrawAmount - collateralAmountToWithdrawDecimal;
   
       assert.closeTo(
         collateralReserveBalanceAfterWithdrawAmount,

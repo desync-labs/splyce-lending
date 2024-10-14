@@ -72,10 +72,10 @@ pub fn handle_withdraw_obligation_collateral<'info>(
         ErrorCode::InvalidSourceOfCollateral
     );
 
-    // require!(
-    //     withdraw_reserve.last_update.is_stale(clock.slot)? == Ok(false),
-    //     ErrorCode::ReserveStale
-    // );
+    require!(
+        withdraw_reserve.last_update.is_stale(clock.slot) == Ok(false),
+        ErrorCode::ReserveStale
+    );
 
     // Validate obligation's lending market and owner
     require!(
