@@ -129,4 +129,11 @@ pub mod splyce_lending {
         msg!("Instruction: withdraw_obligation_collateral");
         handle_withdraw_obligation_collateral(ctx, collateral_amount)
     }
+
+    pub fn refresh_obligation<'info>(
+        ctx: Context<'_, '_, 'info, 'info, RefreshObligation<'info>>,
+    ) -> Result<()> {
+        msg!("Instruction: refresh_obligation");
+        handle_refresh_obligation(ctx)
+    }
 }

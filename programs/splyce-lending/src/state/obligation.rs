@@ -305,6 +305,16 @@ impl Obligation {
             .iter()
             .position(|liquidity| liquidity.borrow_reserve == borrow_reserve)
     }
+
+    /// Get the public keys of all deposit reserves
+    pub fn deposit_reserve_keys(&self) -> Vec<Pubkey> {
+        self.deposits.iter().map(|collateral| collateral.deposit_reserve).collect()
+    }
+
+    /// Get the public keys of all borrow reserves
+    pub fn borrow_reserve_keys(&self) -> Vec<Pubkey> {
+        self.borrows.iter().map(|liquidity| liquidity.borrow_reserve).collect()
+    }
 }
 
 /// Initialize an obligation

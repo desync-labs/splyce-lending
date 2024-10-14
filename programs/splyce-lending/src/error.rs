@@ -125,6 +125,9 @@ pub enum ErrorCode {
     #[msg("Obligation Stale")]
     ObligationStale,
 
+    #[msg("Invalid Account Input")]
+    InvalidAccountInput,
+
     #[msg("MathOverflow2")]
     MathOverflow2,
 

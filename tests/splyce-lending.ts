@@ -2442,4 +2442,128 @@ describe("splyce-lending", () => {
       throw error;
     }
   });
+
+  it("should successfully refresh an obligation", async () => {
+    try {
+      // 1. Set up the Lending Market
+      const [lendingMarketPDA, lendingMarketBump] = await PublicKey.findProgramAddress(
+        [provider.wallet.publicKey.toBuffer()],
+        program.programId
+      );
+  
+      // 2. Set up the Obligation
+      const obligationKey = new anchor.BN(1);
+      const obligationKeyBuffer = obligationKey.toArrayLike(Buffer, 'le', 8);
+      const [obligationPDA, obligationBump] = await PublicKey.findProgramAddress(
+        [
+          Buffer.from("obligation"),
+          obligationKeyBuffer,
+          provider.wallet.publicKey.toBuffer(),
+        ],
+        program.programId
+      );
+      let obligationAccount = await program.account.obligation.fetchNullable(obligationPDA);
+  
+      // 3. Advance slots to make the obligation stale
+      for (let i = 0; i < 2; i++) {
+        const tx = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: provider.wallet.publicKey,
+            toPubkey: provider.wallet.publicKey,
+            lamports: 1,
+          })
+        );
+        await provider.sendAndConfirm(tx, []);
+      }
+  
+      // 4. Check if the obligation is stale
+      const currentSlot = await provider.connection.getSlot();
+      const lastUpdateSlot = obligationAccount.lastUpdate.slot.toNumber();
+      const isStale = obligationAccount.lastUpdate.stale;
+      const slotsElapsed = currentSlot - lastUpdateSlot;
+      console.log(`Is obligation marked as stale? ${isStale}`);
+      console.log(`Current slot: ${currentSlot}, Last update slot: ${lastUpdateSlot}`);
+      console.log(`Slots elapsed since last update: ${slotsElapsed}`);
+  
+      const STALE_AFTER_SLOTS_ELAPSED = 1;
+      const isStaleBySlots = slotsElapsed > STALE_AFTER_SLOTS_ELAPSED;
+      console.log(`Is obligation stale based on elapsed slots? ${isStaleBySlots}`);
+  
+      if (!isStale && !isStaleBySlots) {
+        throw new Error("Obligation should be stale after advancing slots");
+      }
+  
+      // 5. Prepare the accounts for the refresh_obligation instruction
+      const accounts = {
+        obligation: obligationPDA,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      };
+  
+      // 6. Get all unique reserve keys involved in the obligation
+      const uniqueReserves = [...new Set([
+        ...obligationAccount.deposits.map(deposit => deposit.depositReserve),
+        ...obligationAccount.borrows.map(borrow => borrow.borrowReserve)
+      ])];
+  
+      // 7. Create a new transaction
+      const transaction = new Transaction();
+  
+      // 8. Add refresh_reserve instructions for all involved reserves
+      for (const reservePubkey of uniqueReserves) {
+        const reserveAccount = await program.account.reserve.fetch(reservePubkey);
+        const refreshReserveIx = await program.methods
+          .refreshReserve(true) // is_test set to true
+          .accounts({
+            reserve: reservePubkey,
+            signer: provider.wallet.publicKey,
+            mockPythFeed: reserveAccount.mockPythFeed,
+          })
+          .instruction();
+        
+        transaction.add(refreshReserveIx);
+      }
+  
+      // 9. Add refresh_obligation instruction
+      const refreshObligationIx = await program.methods
+        .refreshObligation()
+        .accounts(accounts)
+        .remainingAccounts(uniqueReserves.map(reservePubkey => ({
+          pubkey: reservePubkey,
+          isWritable: true,
+          isSigner: false
+        })))
+        .instruction();
+  
+      transaction.add(refreshObligationIx);
+  
+      // 10. Send and confirm the transaction
+      await provider.sendAndConfirm(transaction);
+  
+      // 11. Fetch the updated obligation
+      const updatedObligation = await program.account.obligation.fetch(obligationPDA);
+  
+      // 12. Verify the results
+      assert(updatedObligation.depositedValue.gt(new anchor.BN(0)), "Deposited value should be greater than 0");
+      assert(updatedObligation.allowedBorrowValue.gt(new anchor.BN(0)), "Allowed borrow value should be greater than 0");
+      assert(updatedObligation.unhealthyBorrowValue.gt(new anchor.BN(0)), "Unhealthy borrow value should be greater than 0");
+      assert(updatedObligation.lastUpdate.slot.gt(new anchor.BN(0)), "Last update slot should be greater than 0");
+        // assert(updatedObligation.borrowedValue.gt(new anchor.BN(0)), "Borrowed value should be greater than 0"); //borrow is 0 in this test case because there was no borrow
+
+      // 13. Verify that borrows have been processed (if any)
+      for (const borrow of updatedObligation.borrows) {
+        assert(borrow.marketValue.gt(new anchor.BN(0)), "Borrow market value should be greater than 0");
+      }
+  
+      // 14. Check if the obligation is closeable
+      assert(typeof updatedObligation.closeable === 'boolean', "Closeable flag should be defined");
+  
+      // 15. Verify that the obligation is no longer stale
+      assert(!updatedObligation.lastUpdate.stale, "Obligation should not be stale after refresh");
+  
+      console.log("Obligation refreshed successfully");
+    } catch (error) {
+      console.error("Error during refresh_obligation test:", error);
+      throw error;
+    }
+  });
 });
