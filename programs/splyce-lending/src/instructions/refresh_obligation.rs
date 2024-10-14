@@ -50,8 +50,11 @@ pub fn handle_refresh_obligation<'info>(
         );
 
         let collateral_exchange_rate = deposit_reserve.collateral_exchange_rate()?; // Get the collateral exchange rate
-        let liquidity_amount = collateral_exchange_rate.collateral_to_liquidity(collateral.deposited_amount)?; // Call the method on the exchange rate        
+        msg!("collateral_exchange_rate: {:?}", collateral_exchange_rate);
+        let liquidity_amount = collateral_exchange_rate.collateral_to_liquidity(collateral.deposited_amount)?; // Call the method on the exchange rate       
+        msg!("liquidity_amount: {}", liquidity_amount);
         let market_value = deposit_reserve.market_value(liquidity_amount as u128)?;
+        msg!("market_value: {}", market_value);
         let market_value_lower_bound = deposit_reserve.market_value_lower_bound(liquidity_amount as u128)?;
 
         let loan_to_value_rate = deposit_reserve.config.loan_to_value_ratio as u128;
@@ -60,15 +63,19 @@ pub fn handle_refresh_obligation<'info>(
 
         collateral.market_value = market_value;
         deposited_value = deposited_value.checked_add(market_value).ok_or(ErrorCode::MathOverflow)?;
+        msg!("deposited_value: {}", deposited_value);
         allowed_borrow_value = allowed_borrow_value
             .checked_add(market_value_lower_bound.checked_mul(loan_to_value_rate).ok_or(ErrorCode::MathOverflow)?.checked_div(PERCENT_SCALER as u128).ok_or(ErrorCode::MathOverflow)?)
             .ok_or(ErrorCode::MathOverflow)?;
+        msg!("allowed_borrow_value: {}", allowed_borrow_value);
         unhealthy_borrow_value = unhealthy_borrow_value
             .checked_add(market_value.checked_mul(liquidation_threshold_rate).ok_or(ErrorCode::MathOverflow)?.checked_div(PERCENT_SCALER as u128).ok_or(ErrorCode::MathOverflow)?)
             .ok_or(ErrorCode::MathOverflow)?;
+        msg!("unhealthy_borrow_value: {}", unhealthy_borrow_value);
         super_unhealthy_borrow_value = super_unhealthy_borrow_value
             .checked_add(market_value.checked_mul(max_liquidation_threshold_rate).ok_or(ErrorCode::MathOverflow)?.checked_div(PERCENT_SCALER as u128).ok_or(ErrorCode::MathOverflow)?)
             .ok_or(ErrorCode::MathOverflow)?;
+        msg!("super_unhealthy_borrow_value: {}", super_unhealthy_borrow_value);
     }
 
     // Process borrows
