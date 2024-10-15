@@ -7,8 +7,9 @@ import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
   ASSOCIATED_TOKEN_PROGRAM_ID,
-  getMint
+  getMint,
 } from "@solana/spl-token";
+import * as token from "@solana/spl-token";
 console.log("TOKEN_PROGRAM_ID:", TOKEN_PROGRAM_ID.toBase58());
 console.log("ASSOCIATED_TOKEN_PROGRAM_ID:", ASSOCIATED_TOKEN_PROGRAM_ID.toBase58());
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
@@ -689,6 +690,306 @@ describe("splyce-lending", () => {
         expectedWsolBalance,
         0.0001,
         `WSOL balance should decrease by ${liquidityAmount.toNumber() / LAMPORTS_PER_SOL} WSOL`
+      );
+  
+      // Fetch the reserve account to determine the collateral amount minted
+      const reserveAccount = await program.account.reserve.fetch(reservePDA);
+      console.log("Reserve Account:", reserveAccount);
+      const collateralAmountMinted = reserveAccount.collateral.mintTotalSupply.toNumber() / 1e9; // Assuming smoothedMarketPrice reflects the collateral minted in this test
+  
+      // Calculate expected Collateral Token balance
+      const expectedCollateralBalance = collateralAmountMinted;
+      assert.closeTo(
+        collateralBalanceAfter,
+        expectedCollateralBalance,
+        0.0001,
+        `Collateral Token balance should increase by ${collateralAmountMinted} CTokens`
+      );
+  
+      // Additional assertions can be added here as needed
+  
+    } catch (error) {
+      // Check if the error has logs
+      if (error.logs) {
+        console.error("Transaction failed with logs:", error.logs);
+      } else {
+        console.error("Transaction failed without logs:", error);
+      }
+  
+      // If using Anchor's SendTransactionError, you can access the logs like this:
+      if (error instanceof anchor.AnchorError) {
+        console.error("Anchor Error:", error.error);
+        console.error("Error Logs:", error.logs);
+      }
+  
+      // Optionally, rethrow the error if you want the test to fail
+      throw error;
+    }
+  });
+
+  it("init_second_reserve", async () => {
+    try {
+      // 1) Airdrop SOL (ensure sufficient SOL for wrapping and transactions)
+      const airdropAmount = 2; // Airdrop 2 SOL to cover wrapping and rent
+      await airdropSol(provider.wallet.publicKey, airdropAmount);
+  
+      // https://solana-labs.github.io/solana-program-library/token/js/functions/createMint.html
+      // createMint(connection, payer, mintAuthority, freezeAuthority, decimals, keypair?, confirmOptions?, programId?):
+      // 2) Create a new mint token
+      const secondLiquidityTokenMint = await token.createMint(
+        provider.connection, //connection
+        provider.wallet.publicKey, //payer
+        provider.wallet.publicKey, //mintAuthority
+        provider.wallet.publicKey, //freezeAuthority
+        9, //decimals
+        undefined, //keypair
+        undefined, //confirmOptions
+        TOKEN_PROGRAM_ID // SPL Token program account
+      )
+
+      //create an ATA for the second liquidity token
+      const secondLiquidityTokenATA = await getAssociatedTokenAddressSync(
+        secondLiquidityTokenMint,
+        provider.wallet.publicKey,
+        true,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+
+      //3) mintTo the provider.wallet.publicKey
+      // mintTo(connection, payer, mint, destination, authority, amount, multiSigners?, confirmOptions?, programId?): Promise<TransactionSignature>
+      await token.mintTo(
+        provider.connection, //connection
+        provider.wallet.publicKey, //payer
+        secondLiquidityTokenMint, //mint
+        secondLiquidityTokenATA, //destination
+        provider.wallet.publicKey, //authority
+        new anchor.BN(1000 * LAMPORTS_PER_SOL), // 1000 tokens (assuming 9 decimals)
+      )
+      //4) check the balance of the second liquidity token
+      const tokenAccountInfoBefore = await provider.connection.getTokenAccountBalance(secondLiquidityTokenATA);
+      console.log(`Second Liquidity Token Balance before initReserve: ${tokenAccountInfoBefore.value.uiAmount} Second Liquidity Token`);
+
+      // 5) Init MockPythPriceFeed
+      const initialPriceOfSecondLiquidityTokenInLamports = new anchor.BN(50 * LAMPORTS_PER_SOL); // $50
+      const expo = new anchor.BN(9); // Exponent for price feed
+  
+      // Derive the PDA for the MockPythPriceFeed using the signer's key and initial price
+      const seedsMockPythFeed = [
+        provider.wallet.publicKey.toBuffer(),
+        initialPriceOfSecondLiquidityTokenInLamports.toArrayLike(Buffer, "le", 8),
+      ];
+      const [mockPythPriceFeedPDA, bump] = await PublicKey.findProgramAddress(
+        seedsMockPythFeed,
+        program.programId
+      );
+  
+      // Initialize the mock Pyth price feed
+      await program.methods
+        .initMockPythFeed(
+          initialPriceOfSecondLiquidityTokenInLamports,
+          expo,
+        )
+        .accounts({
+          mockPythFeed: mockPythPriceFeedPDA,
+          signer: provider.wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+  
+      console.log("Initialized MockPythPriceFeed at:", mockPythPriceFeedPDA.toBase58());
+  
+      const mockPythPriceFeedAccount = await program.account.mockPythPriceFeed.fetch(
+        mockPythPriceFeedPDA
+      );
+      console.log("MockPythPriceFeed Account:", mockPythPriceFeedAccount);
+  
+      // 6) Prepare for init_reserve
+  
+      // Define 'key' for reserve. I set it as 2 because it is the second reserve.
+      const key = new anchor.BN(2);
+  
+      const keyBuffer = key.toArrayLike(Buffer, 'le', 8);
+  
+      console.log("Client Key Buffer (Hex):", keyBuffer.toString('hex'));
+  
+      // Derive reserve PDA
+      const [reservePDA, reserveBump] = await PublicKey.findProgramAddress(
+        [
+          Buffer.from("reserve"),
+          keyBuffer,
+          provider.wallet.publicKey.toBuffer(),
+        ],
+        program.programId
+      );
+
+      // Get lendingMarketPDA (from previous test and is same as first reserve)
+      const [lendingMarketPDA, lendingMarketBump] = await PublicKey.findProgramAddress(
+        [provider.wallet.publicKey.toBuffer()],
+        program.programId
+      );
+  
+      // Create a Keypair for the collateral mint account (LP token mint)
+      // This account will be initialized in the instruction with the mint authority set to the lending market
+      const collateralMintKeypair = Keypair.generate();
+      console.log("Collateral Mint Account:", collateralMintKeypair.publicKey.toBase58());
+      const liquidityFeeAccountOwner = Keypair.generate();
+      console.log("Liquidity Fee Account Owner:", liquidityFeeAccountOwner.publicKey.toBase58());
+      await airdropSol(liquidityFeeAccountOwner.publicKey, 1); // Airdrop 1 SOL
+      console.log("Collateral Mint Account:", collateralMintKeypair.publicKey.toBase58());
+      const defaultSigner = provider.wallet.publicKey;
+      console.log("Default Signer:", defaultSigner.toBase58());
+  
+      // Airdrop SOL to collateralMintKeypair to cover rent for the mint account
+      await airdropSol(collateralMintKeypair.publicKey, 1); // Airdrop 1 SOL
+      console.log("LendingMarketPDA:", lendingMarketPDA.toBase58());
+  
+      // Collateral Reserve Account (Associated Token Account for collateral mint, owned by lendingMarketPDA)
+      const collateralReserveAccount = await getAssociatedTokenAddress(
+        collateralMintKeypair.publicKey, // Collateral mint (LP token mint)
+        lendingMarketPDA,                // Owner of the account (PDA)
+        true,                            // Allow owner off curve
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+  
+      // Collateral User Account (Associated Token Account for collateral mint, owned by provider.wallet.publicKey)
+      const collateralUserAccount = await getAssociatedTokenAddress(
+        collateralMintKeypair.publicKey, // Collateral mint (LP token mint)
+        provider.wallet.publicKey,       // Owner of the account (on-curve)
+        false,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+  
+      // Liquidity Reserve Account (Associated Token Account for WSOL, owned by lendingMarketPDA)
+      const liquidityReserveAccount = await getAssociatedTokenAddress(
+        wrappedSolMint,                  // WSOL mint
+        lendingMarketPDA,                // Owner of the account (PDA)
+        true,                            // Allow owner off curve
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+  
+      // Liquidity Fee Account (Associated Token Account for WSOL, owned by another keypair)
+      const liquidityFeeAccount = await getAssociatedTokenAddress(
+        wrappedSolMint,                  // WSOL mint
+        liquidityFeeAccountOwner.publicKey,        // Owner of the account (on-curve)
+        false,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+  
+      // Liquidity User Account is the second liquidity token account of the provider.wallet
+      const liquidityUserAccount = secondLiquidityTokenATA;
+  
+      // Prepare ReserveConfig
+      const reserveConfig = {
+        optimalUtilizationRate: 80,
+        maxUtilizationRate: 90,
+        loanToValueRatio: 50,
+        liquidationBonus: 5,
+        maxLiquidationBonus: 10,
+        liquidationThreshold: 60,
+        maxLiquidationThreshold: 70,
+        minBorrowRate: 0,
+        optimalBorrowRate: 4,
+        maxBorrowRate: 8,
+        superMaxBorrowRate: new anchor.BN(12),
+        fees: {
+          borrowFeeWad: new anchor.BN(0),
+          flashLoanFeeWad: new anchor.BN(0),
+          hostFeePercentage: 0,
+        },
+        depositLimit: new anchor.BN(1000 * LAMPORTS_PER_SOL),
+        borrowLimit: new anchor.BN(500 * LAMPORTS_PER_SOL),
+        feeReceiver: liquidityFeeAccount, // Ensure feeReceiver is correctly handled if needed
+        protocolLiquidationFee: 1,
+        protocolTakeRate: 1,
+        addedBorrowWeightBps: new anchor.BN(0),
+        reserveType: { regular: {} },
+        scaledPriceOffsetBps: new anchor.BN(0),
+        extraOraclePubkey: null,
+        attributedBorrowLimitOpen: new anchor.BN(0),
+        attributedBorrowLimitClose: new anchor.BN(0),
+        reserveSetterProgramId: null,
+      };
+  
+      // Define liquidity amount to deposit (1 in lamports)
+      const liquidityAmount = new anchor.BN(1 * LAMPORTS_PER_SOL); // Deposit 1
+  
+      // Get feed_id from the mock Pyth price feed
+      const feedId = mockPythPriceFeedPDA.toBuffer();
+  
+      // Ensure feedId is 32 bytes
+      if (feedId.length !== 32) {
+        throw new Error('feedId must be 32 bytes');
+      }
+  
+      // 8) **Fetch and Store Balances Before initReserve**
+  
+      // Fetch WSOL balance before initReserve
+      const secondLiquidityTokenBalanceBeforeInit = await provider.connection.getTokenAccountBalance(secondLiquidityTokenATA);
+      console.log(`Second Liquidity Token Balance before initReserve: ${secondLiquidityTokenBalanceBeforeInit.value.uiAmount} Second Liquidity Token`);
+      
+      // 9) **Call the `initReserve` Instruction**
+  
+      // Now, call the instruction to initialize the reserve within try-catch
+      const tx = await program.methods
+        .initReserve(
+          liquidityAmount,
+          key,
+          Array.from(feedId),
+          reserveConfig,
+          true  // is_test
+        )
+        .accounts({
+          reserve: reservePDA,
+          lendingMarket: lendingMarketPDA,
+          collateralMintAccount: collateralMintKeypair.publicKey,
+          collateralReserveAccount: collateralReserveAccount,
+          collateralUserAccount: collateralUserAccount,
+          liquidityMintAccount: secondLiquidityTokenMint,
+          liquidityReserveAccount: liquidityReserveAccount,
+          liquidityFeeAccount: liquidityFeeAccount,
+          liquidityUserAccount: secondLiquidityTokenATA,
+          signer: provider.wallet.publicKey,
+          feeAccountOwner: liquidityFeeAccountOwner.publicKey,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          mockPythFeed: mockPythPriceFeedPDA,
+        })
+        .signers([
+          collateralMintKeypair,
+          liquidityFeeAccountOwner
+        ])
+        .rpc();
+  
+      // If the transaction is successful, you can proceed with further assertions
+      console.log("initReserve transaction signature:", tx);
+  
+      // 10) **Fetch and Store Balances After initReserve**
+  
+      // Fetch second liquidity token balance after initReserve
+      const secondLiquidityTokenBalanceAfterInit = await provider.connection.getTokenAccountBalance(secondLiquidityTokenATA);
+      const secondLiquidityTokenBalanceAfter = parseFloat(secondLiquidityTokenBalanceAfterInit.value.uiAmountString || "0");
+      console.log(`Second Liquidity Token Balance after initReserve: ${secondLiquidityTokenBalanceAfter} Second Liquidity Token`);
+  
+      // Fetch Collateral Token balance after initReserve
+      const collateralBalanceAfterInit = await provider.connection.getTokenAccountBalance(collateralUserAccount);
+      const collateralBalanceAfter = parseFloat(collateralBalanceAfterInit.value.uiAmountString || "0");
+      console.log(`Collateral Token Balance after initReserve: ${collateralBalanceAfter} CTokens`);
+  
+      // 11) **Assert the Balance Changes**
+  
+      // Calculate expected second liquidity token balance
+      const expectedSecondLiquidityTokenBalance = secondLiquidityTokenBalanceAfter + (liquidityAmount.toNumber() / LAMPORTS_PER_SOL);
+      assert.closeTo(
+        secondLiquidityTokenBalanceAfter,
+        expectedSecondLiquidityTokenBalance,
+        0.0001,
+        `Second Liquidity Token balance should decrease by ${liquidityAmount.toNumber() / LAMPORTS_PER_SOL} tokens`
       );
   
       // Fetch the reserve account to determine the collateral amount minted
@@ -2570,5 +2871,4 @@ describe("splyce-lending", () => {
       throw error;
     }
   });
-
 });
