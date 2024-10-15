@@ -32,8 +32,6 @@ pub struct ObligationInit<'info> {
     pub system_program: Program<'info, System>,
 
     pub token_program: Program<'info, Token>,
-
-    pub rent: Sysvar<'info, Rent>,
 }
 
 pub fn handle_init_obligation(

@@ -102,8 +102,6 @@ pub struct ReserveInit<'info> {
 
     pub associated_token_program: Program<'info, AssociatedToken>,
 
-    pub rent: Sysvar<'info, Rent>,
-
     pub mock_pyth_feed: Account<'info, MockPythPriceFeed>,
 }
 

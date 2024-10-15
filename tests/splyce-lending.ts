@@ -657,7 +657,6 @@ describe("splyce-lending", () => {
           systemProgram: SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
           mockPythFeed: mockPythPriceFeedPDA,
         })
         .signers([
@@ -1569,9 +1568,7 @@ describe("splyce-lending", () => {
           collateralMintAccount: collateralMintPubkey,
           lendingMarket: lendingMarketPDA,
           signer: secondaryUser.publicKey,
-          systemProgram: SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
-          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
         })
         .instruction();
       
@@ -1748,7 +1745,6 @@ describe("splyce-lending", () => {
           signer: provider.wallet.publicKey,
           systemProgram: SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
-          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
         })
         .rpc();
   
@@ -1837,7 +1833,6 @@ describe("splyce-lending", () => {
             signer: provider.wallet.publicKey,
             systemProgram: SystemProgram.programId,
             tokenProgram: TOKEN_PROGRAM_ID,
-            rent: anchor.web3.SYSVAR_RENT_PUBKEY,
           })
           .rpc();
   
@@ -1916,9 +1911,7 @@ describe("splyce-lending", () => {
             collateralMintAccount: collateralMintPubkey,
             lendingMarket: lendingMarketPDA,
             signer: provider.wallet.publicKey,
-            systemProgram: SystemProgram.programId,
             tokenProgram: TOKEN_PROGRAM_ID,
-            rent: anchor.web3.SYSVAR_RENT_PUBKEY,
           })
           .rpc();
   
@@ -1963,9 +1956,7 @@ describe("splyce-lending", () => {
           obligation: obligationPDA,
           lendingMarket: lendingMarketPDA,
           signer: provider.wallet.publicKey,
-          systemProgram: SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
-          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
         })
         .rpc();
   
@@ -2129,9 +2120,7 @@ describe("splyce-lending", () => {
           obligation: obligationPDA,
           lendingMarket: lendingMarketPDA,
           signer: provider.wallet.publicKey,
-          systemProgram: SystemProgram.programId,
           tokenProgram: anchor.web3.TOKEN_PROGRAM_ID,
-          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
         })
         .rpc();
 
@@ -2197,7 +2186,6 @@ describe("splyce-lending", () => {
             signer: provider.wallet.publicKey,
             systemProgram: SystemProgram.programId,
             tokenProgram: TOKEN_PROGRAM_ID,
-            rent: anchor.web3.SYSVAR_RENT_PUBKEY,
           })
           .rpc();
   
@@ -2266,9 +2254,7 @@ describe("splyce-lending", () => {
               collateralMintAccount: collateralMintPubkey,
               lendingMarket: lendingMarketPDA,
               signer: provider.wallet.publicKey,
-              systemProgram: SystemProgram.programId,
               tokenProgram: TOKEN_PROGRAM_ID,
-              rent: anchor.web3.SYSVAR_RENT_PUBKEY,
             })
             .rpc();
   
@@ -2298,9 +2284,7 @@ describe("splyce-lending", () => {
             obligation: obligationPDA,
             lendingMarket: lendingMarketPDA,
             signer: provider.wallet.publicKey,
-            systemProgram: SystemProgram.programId,
             tokenProgram: TOKEN_PROGRAM_ID,
-            rent: anchor.web3.SYSVAR_RENT_PUBKEY,
           })
           .rpc();
   
@@ -2390,9 +2374,7 @@ describe("splyce-lending", () => {
           obligation: obligationPDA,
           lendingMarket: lendingMarketPDA,
           signer: provider.wallet.publicKey,
-          systemProgram: SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
-          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
         })
         .remainingAccounts(
           depositReserves
