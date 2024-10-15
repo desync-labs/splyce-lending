@@ -89,7 +89,8 @@ impl RateLimiter {
         Ok(())
     }
 
-    /// Calculate current outflow. Must only be called after `_update()`!
+
+     /// Calculate current outflow. Must only be called after `_update()`!
     ///
     /// The `current_outflow` is calculated by taking a weighted sum of `prev_qty` and `cur_qty`.
     /// The weight for `prev_qty` decreases linearly over the window duration.
@@ -179,3 +180,4 @@ impl Default for RateLimiter {
         )
     }
 }
+
