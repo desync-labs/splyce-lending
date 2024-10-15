@@ -89,10 +89,10 @@ pub fn handle_withdraw_obligation_collateral<'info>(
     );
 
     // TODO: Uncomment after implementing refresh_obligation
-    // require!(
-    //     obligation.last_update.is_stale(clock.slot)? == Ok(false),
-    //     ErrorCode::ObligationStale
-    // );
+    require!(
+        obligation.last_update.is_stale(clock.slot) == Ok(false),
+        ErrorCode::ObligationStale
+    );
 
     // Find the collateral and its index
     let (collateral, collateral_index) =
