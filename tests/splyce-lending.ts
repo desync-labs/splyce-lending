@@ -6,10 +6,13 @@ import {
   createSyncNativeInstruction,
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
+  createAssociatedTokenAccount,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   getMint,
+  mintTo,
+  createMint
 } from "@solana/spl-token";
-import * as token from "@solana/spl-token";
+
 console.log("TOKEN_PROGRAM_ID:", TOKEN_PROGRAM_ID.toBase58());
 console.log("ASSOCIATED_TOKEN_PROGRAM_ID:", ASSOCIATED_TOKEN_PROGRAM_ID.toBase58());
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
@@ -732,40 +735,53 @@ describe("splyce-lending", () => {
       // 1) Airdrop SOL (ensure sufficient SOL for wrapping and transactions)
       const airdropAmount = 2; // Airdrop 2 SOL to cover wrapping and rent
       await airdropSol(provider.wallet.publicKey, airdropAmount);
+
+      console.log(provider.wallet);
+      console.log(provider.wallet.publicKey);
   
       // https://solana-labs.github.io/solana-program-library/token/js/functions/createMint.html
-      // createMint(connection, payer, mintAuthority, freezeAuthority, decimals, keypair?, confirmOptions?, programId?):
+      // createMint(connection, payer(signer), mintAuthority, freezeAuthority, decimals, keypair?, confirmOptions?, programId?):
       // 2) Create a new mint token
-      const secondLiquidityTokenMint = await token.createMint(
-        provider.connection, //connection
-        provider.wallet.publicKey, //payer
-        provider.wallet.publicKey, //mintAuthority
-        provider.wallet.publicKey, //freezeAuthority
-        9, //decimals
-        undefined, //keypair
-        undefined, //confirmOptions
-        TOKEN_PROGRAM_ID // SPL Token program account
+      const secondLiquidityTokenMint = await createMint(
+        provider.connection,
+        provider.wallet.payer, // Use the provider's wallet as the payer
+        provider.wallet.publicKey, // Use the provider's public key as the mint authority
+        null,
+        9,
+        undefined, // Use undefined for default keypair
+        undefined, // Use undefined for default confirm options
+        TOKEN_PROGRAM_ID
       )
 
+      console.log("Second Liquidity Token Mint:", secondLiquidityTokenMint.toBase58());
+
       //create an ATA for the second liquidity token
-      const secondLiquidityTokenATA = await getAssociatedTokenAddressSync(
+      // createAssociatedTokenAccount
+      // Create an ATA for the second liquidity token
+      const secondLiquidityTokenATA = await createAssociatedTokenAccount(
+        provider.connection,
+        provider.wallet.payer,
         secondLiquidityTokenMint,
         provider.wallet.publicKey,
-        true,
+        undefined, // confirmOptions
         TOKEN_PROGRAM_ID,
         ASSOCIATED_TOKEN_PROGRAM_ID
       );
 
-      //3) mintTo the provider.wallet.publicKey
-      // mintTo(connection, payer, mint, destination, authority, amount, multiSigners?, confirmOptions?, programId?): Promise<TransactionSignature>
-      await token.mintTo(
-        provider.connection, //connection
-        provider.wallet.publicKey, //payer
-        secondLiquidityTokenMint, //mint
-        secondLiquidityTokenATA, //destination
-        provider.wallet.publicKey, //authority
-        new anchor.BN(1000 * LAMPORTS_PER_SOL), // 1000 tokens (assuming 9 decimals)
-      )
+      console.log("Second Liquidity Token ATA:", secondLiquidityTokenATA.toBase58());
+
+      // 3) Mint tokens to the provider's wallet
+      await mintTo(
+        provider.connection, // connection
+        provider.wallet.payer, // payer (should be a Signer)
+        secondLiquidityTokenMint, // mint
+        secondLiquidityTokenATA, // destination
+        provider.wallet.publicKey, // authority
+        new anchor.BN(1000 * LAMPORTS_PER_SOL).toNumber(), // amount (as number)
+        [], // multiSigners (empty array if not using multisig)
+        undefined, // confirmOptions
+        TOKEN_PROGRAM_ID // programId
+      );
       //4) check the balance of the second liquidity token
       const tokenAccountInfoBefore = await provider.connection.getTokenAccountBalance(secondLiquidityTokenATA);
       console.log(`Second Liquidity Token Balance before initReserve: ${tokenAccountInfoBefore.value.uiAmount} Second Liquidity Token`);
@@ -864,7 +880,7 @@ describe("splyce-lending", () => {
   
       // Liquidity Reserve Account (Associated Token Account for WSOL, owned by lendingMarketPDA)
       const liquidityReserveAccount = await getAssociatedTokenAddress(
-        wrappedSolMint,                  // WSOL mint
+        secondLiquidityTokenMint,                  // second liquidity token mint
         lendingMarketPDA,                // Owner of the account (PDA)
         true,                            // Allow owner off curve
         TOKEN_PROGRAM_ID,
@@ -873,7 +889,7 @@ describe("splyce-lending", () => {
   
       // Liquidity Fee Account (Associated Token Account for WSOL, owned by another keypair)
       const liquidityFeeAccount = await getAssociatedTokenAddress(
-        wrappedSolMint,                  // WSOL mint
+        secondLiquidityTokenMint,                  // second liquidity token mint
         liquidityFeeAccountOwner.publicKey,        // Owner of the account (on-curve)
         false,
         TOKEN_PROGRAM_ID,
@@ -930,10 +946,10 @@ describe("splyce-lending", () => {
   
       // Fetch WSOL balance before initReserve
       const secondLiquidityTokenBalanceBeforeInit = await provider.connection.getTokenAccountBalance(secondLiquidityTokenATA);
+      const balanceBefore = secondLiquidityTokenBalanceBeforeInit.value.uiAmount;
       console.log(`Second Liquidity Token Balance before initReserve: ${secondLiquidityTokenBalanceBeforeInit.value.uiAmount} Second Liquidity Token`);
       
       // 9) **Call the `initReserve` Instruction**
-  
       // Now, call the instruction to initialize the reserve within try-catch
       const tx = await program.methods
         .initReserve(
@@ -981,10 +997,13 @@ describe("splyce-lending", () => {
       const collateralBalanceAfter = parseFloat(collateralBalanceAfterInit.value.uiAmountString || "0");
       console.log(`Collateral Token Balance after initReserve: ${collateralBalanceAfter} CTokens`);
   
-      // 11) **Assert the Balance Changes**
+      // // 11) **Assert the Balance Changes**
   
       // Calculate expected second liquidity token balance
-      const expectedSecondLiquidityTokenBalance = secondLiquidityTokenBalanceAfter + (liquidityAmount.toNumber() / LAMPORTS_PER_SOL);
+      const liquidityAmountInTokens = liquidityAmount.toNumber() / LAMPORTS_PER_SOL; // Convert lamports to tokens
+
+      const expectedSecondLiquidityTokenBalance = balanceBefore - liquidityAmountInTokens;
+      console.log("Expected Second Liquidity Token Balance:", expectedSecondLiquidityTokenBalance);
       assert.closeTo(
         secondLiquidityTokenBalanceAfter,
         expectedSecondLiquidityTokenBalance,
