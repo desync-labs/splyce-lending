@@ -135,19 +135,19 @@ impl Obligation {
             return Ok(0);
         }
     
-        let loan_to_value_ratio = withdraw_reserve.loan_to_value_ratio();
+        let loan_to_value_ratio = withdraw_reserve.loan_to_value_ratio(); //u128
         if loan_to_value_ratio == 0 {
             return Ok(collateral.deposited_amount);
         }
     
         // Calculate max withdraw value
         let max_withdraw_value = self
-            .allowed_borrow_value
-            .checked_sub(self.borrowed_value_upper_bound)
+            .allowed_borrow_value //u128
+            .checked_sub(self.borrowed_value_upper_bound) //u128
             .ok_or(ErrorCode::MathOverflow)?
-            .checked_mul(WAD as u128)
+            .checked_mul(WAD as u128) //u128
             .ok_or(ErrorCode::MathOverflow)?
-            .checked_div(loan_to_value_ratio)
+            .checked_div(loan_to_value_ratio) //u128
             .ok_or(ErrorCode::MathOverflow)?;
     
         // Convert to liquidity amount

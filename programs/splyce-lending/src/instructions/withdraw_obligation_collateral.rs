@@ -84,7 +84,6 @@ pub fn handle_withdraw_obligation_collateral<'info>(
         ErrorCode::ObligationNotOwnedBySigner
     );
 
-    // TODO: Uncomment after implementing refresh_obligation
     require!(
         obligation.last_update.is_stale(clock.slot) == Ok(false),
         ErrorCode::ObligationStale

@@ -118,7 +118,7 @@ impl Reserve {
         price_weight_bps
     }
 
-    /// get loan to value ratio as a Rate
+    /// get loan to value ratio as a u128 with scaling
     pub fn loan_to_value_ratio(&self) -> u128 {
         self.config.loan_to_value_ratio as u128 * PERCENT_SCALER as u128
     }

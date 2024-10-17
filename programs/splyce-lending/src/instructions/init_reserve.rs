@@ -147,14 +147,6 @@ pub fn handle_init_reserve(
         ErrorCode::InvalidBumpSeed
     );
 
-    // For Debugging
-    // let (expected_reserve_pda, expected_bump) = Pubkey::find_program_address(
-    //     &[b"reserve".as_ref(), &key.to_le_bytes().as_ref(), &signer.key.to_bytes().as_ref()],
-    //     program_id
-    // );
-
-    // msg!("Expected Reserve PDA: {:?}", expected_reserve_pda);
-
     msg!("Fetching market price");
     let (mut market_price, mut expo) = (0, 0);
     if is_test {
