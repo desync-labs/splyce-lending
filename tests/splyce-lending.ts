@@ -2668,6 +2668,49 @@ describe("splyce-lending", () => {
         
         transaction.add(refreshReserveIx);
       }
+      // Create a new transaction for refreshing reserves and obligation before withdrawal
+      const preWithdrawalTransaction = new anchor.web3.Transaction();
+
+      // Add refresh_reserve instructions for all involved reserves
+      for (const reservePubkey of uniqueReserves) {
+        const reserveAccount = await program.account.reserve.fetch(reservePubkey);
+        const refreshReserveIx = await program.methods
+          .refreshReserve(true) // is_test set to true
+          .accounts({
+            reserve: reservePubkey,
+            signer: provider.wallet.publicKey,
+            mockPythFeed: reserveAccount.mockPythFeed,
+          })
+          .instruction();
+        
+        preWithdrawalTransaction.add(refreshReserveIx);
+      }
+
+      // Add refresh_obligation instruction to the pre-withdrawal transaction
+      const refreshObligationBeforeWithdrawIx = await program.methods
+        .refreshObligation()
+        .accounts({
+          obligation: obligationPDA,
+        })
+        .remainingAccounts(uniqueReserves.map(reservePubkey => ({
+          pubkey: reservePubkey,
+          isWritable: true,
+          isSigner: false
+        })))
+        .instruction();
+
+      preWithdrawalTransaction.add(refreshObligationBeforeWithdrawIx);
+
+      // Send and confirm the pre-withdrawal transaction
+      await provider.sendAndConfirm(preWithdrawalTransaction);
+
+      // Fetch obligation account after refresh but before withdrawal
+      const obligationAfterRefresh = await program.account.obligation.fetch(obligationPDA);
+
+      console.log("Obligation state after refresh but before withdrawal:");
+      console.log("Deposited Value:", obligationAfterRefresh.depositedValue.toString());
+      console.log("Allowed Borrow Value:", obligationAfterRefresh.allowedBorrowValue.toString());
+      console.log("Unhealthy Borrow Value:", obligationAfterRefresh.unhealthyBorrowValue.toString());
       
       // Add refresh_obligation instruction with proper remaining accounts
       const refreshObligationIx = await program.methods
@@ -2714,7 +2757,21 @@ describe("splyce-lending", () => {
       await provider.sendAndConfirm(transaction);
   
       console.log("Withdrawn obligation collateral.");
-  
+      // Fetch and log the obligation state after withdrawal
+      const obligationAfterWithdraw = await program.account.obligation.fetch(obligationPDA);
+      console.log("Obligation state after withdrawal:");
+      console.log("Deposited Value:", obligationAfterWithdraw.depositedValue.toString());
+      console.log("Allowed Borrow Value:", obligationAfterWithdraw.allowedBorrowValue.toString());
+      console.log("Unhealthy Borrow Value:", obligationAfterWithdraw.unhealthyBorrowValue.toString());
+
+      // Compare before and after states
+      console.log("Changes in Obligation state:");
+      console.log("Deposited Value change:", 
+        obligationAfterWithdraw.depositedValue.sub(obligationAfterRefresh.depositedValue).toString());
+      console.log("Allowed Borrow Value change:", 
+        obligationAfterWithdraw.allowedBorrowValue.sub(obligationAfterRefresh.allowedBorrowValue).toString());
+      console.log("Unhealthy Borrow Value change:", 
+        obligationAfterWithdraw.unhealthyBorrowValue.sub(obligationAfterRefresh.unhealthyBorrowValue).toString());
       // 6) Verify the results
   
       // Fetch the collateral balance after withdrawal
@@ -2847,6 +2904,15 @@ describe("splyce-lending", () => {
         transaction.add(refreshReserveIx);
       }
   
+      // Log obligation details before refresh
+      console.log("Obligation before refresh:");
+      console.log("Obligation deposits:", obligationAccount.deposits);
+      console.log("Obligation borrows:", obligationAccount.borrows);
+      console.log("Obligation depositedValue:", obligationAccount.depositedValue.toString());
+      console.log("Obligation allowedBorrowValue:", obligationAccount.allowedBorrowValue.toString());
+      console.log("Obligation unhealthyBorrowValue:", obligationAccount.unhealthyBorrowValue.toString());
+      console.log("Obligation lastUpdate:", obligationAccount.lastUpdate);
+
       // 9. Add refresh_obligation instruction
       const refreshObligationIx = await program.methods
         .refreshObligation()
@@ -2872,6 +2938,13 @@ describe("splyce-lending", () => {
       // assert(updatedObligation.unhealthyBorrowValue.gt(new anchor.BN(0)), "Unhealthy borrow value should be greater than 0");
       // assert(updatedObligation.lastUpdate.slot.gt(new anchor.BN(0)), "Last update slot should be greater than 0");
         // assert(updatedObligation.borrowedValue.gt(new anchor.BN(0)), "Borrowed value should be greater than 0"); //borrow is 0 in this test case because there was no borrow
+      console.log("Updated Obligation:", updatedObligation);
+      console.log("Updated Obligation deposits:", updatedObligation.deposits);
+      console.log("Updated Obligation borrows:", updatedObligation.borrows);
+      console.log("Updated obligation depositedValue:", updatedObligation.depositedValue.toString());
+      console.log("Updated obligation allowedBorrowValue:", updatedObligation.allowedBorrowValue.toString());
+      console.log("Updated obligation unhealthyBorrowValue:", updatedObligation.unhealthyBorrowValue.toString());
+      console.log("Updated obligation lastUpdate:", updatedObligation.lastUpdate);
 
       // 13. Verify that borrows have been processed (if any) //no need to check below because refresh_obligation happens in the previous test case
       // for (const borrow of updatedObligation.borrows) {

@@ -64,16 +64,18 @@ pub fn handle_refresh_obligation<'info>(
         collateral.market_value = market_value;
         deposited_value = deposited_value.checked_add(market_value).ok_or(ErrorCode::MathOverflow)?;
         msg!("deposited_value: {}", deposited_value);
+        msg!("market_value_lower_bound: {}", market_value_lower_bound);
+        msg!("loan_to_value_rate: {}", loan_to_value_rate);
         allowed_borrow_value = allowed_borrow_value
-            .checked_add(market_value_lower_bound.checked_mul(loan_to_value_rate).ok_or(ErrorCode::MathOverflow)?.checked_div(PERCENT_SCALER as u128).ok_or(ErrorCode::MathOverflow)?)
+            .checked_add(market_value_lower_bound.checked_mul(loan_to_value_rate).ok_or(ErrorCode::MathOverflow)?.checked_div(100 as u128).ok_or(ErrorCode::MathOverflow)?)
             .ok_or(ErrorCode::MathOverflow)?;
         msg!("allowed_borrow_value: {}", allowed_borrow_value);
         unhealthy_borrow_value = unhealthy_borrow_value
-            .checked_add(market_value.checked_mul(liquidation_threshold_rate).ok_or(ErrorCode::MathOverflow)?.checked_div(PERCENT_SCALER as u128).ok_or(ErrorCode::MathOverflow)?)
+            .checked_add(market_value.checked_mul(liquidation_threshold_rate).ok_or(ErrorCode::MathOverflow)?.checked_div(100 as u128).ok_or(ErrorCode::MathOverflow)?)
             .ok_or(ErrorCode::MathOverflow)?;
         msg!("unhealthy_borrow_value: {}", unhealthy_borrow_value);
         super_unhealthy_borrow_value = super_unhealthy_borrow_value
-            .checked_add(market_value.checked_mul(max_liquidation_threshold_rate).ok_or(ErrorCode::MathOverflow)?.checked_div(PERCENT_SCALER as u128).ok_or(ErrorCode::MathOverflow)?)
+            .checked_add(market_value.checked_mul(max_liquidation_threshold_rate).ok_or(ErrorCode::MathOverflow)?.checked_div(100 as u128).ok_or(ErrorCode::MathOverflow)?)
             .ok_or(ErrorCode::MathOverflow)?;
         msg!("super_unhealthy_borrow_value: {}", super_unhealthy_borrow_value);
     }
