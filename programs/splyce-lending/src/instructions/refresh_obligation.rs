@@ -38,7 +38,7 @@ pub fn handle_refresh_obligation<'info>(
 
         // Find the corresponding reserve account from the obligation's deposits
         let deposit_reserve = Account::<Reserve>::try_from(&ctx.remaining_accounts[index])?;
-
+        msg!("deposit_reserve_pubkey: {}", deposit_reserve_pubkey);
         require!(
             deposit_reserve_pubkey == deposit_reserve.key(),
             ErrorCode::InvalidAccountInput
@@ -141,6 +141,7 @@ pub fn handle_refresh_obligation<'info>(
     }
 
     obligation.deposited_value = deposited_value;
+    msg!("obligation.deposited_value: {}", obligation.deposited_value);
     obligation.borrowed_value = borrowed_value;
     obligation.unweighted_borrowed_value = unweighted_borrowed_value;
     obligation.borrowed_value_upper_bound = borrowed_value_upper_bound;

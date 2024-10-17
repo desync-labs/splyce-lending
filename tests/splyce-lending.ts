@@ -2890,4 +2890,294 @@ describe("splyce-lending", () => {
       throw error;
     }
   });
+
+  it("deposit_obligation_collateral_with_multiple_reserves", async () => {
+    try {
+      // 1. Get Lending Market, Reserve1, Reserve2 and Obligation PDAs
+      const [lendingMarketPDA, lendingMarketBump] = await PublicKey.findProgramAddress(
+        [provider.wallet.publicKey.toBuffer()],
+        program.programId
+      );
+      console.log("Lending Market PDA:", lendingMarketPDA.toBase58());
+      // Get Reserve1 PDA
+      const reserve1Key = new anchor.BN(1); // Using key = 1
+      const reserve1KeyBuffer = reserve1Key.toArrayLike(Buffer, 'le', 8);
+      const [reserve1PDA, reserve1Bump] = await PublicKey.findProgramAddress(
+        [
+          Buffer.from("reserve"),
+          reserve1KeyBuffer,
+          provider.wallet.publicKey.toBuffer(),
+        ],
+        program.programId
+      );
+      console.log("Reserve1 PDA:", reserve1PDA.toBase58());
+      const reserve1Account = await program.account.reserve.fetch(reserve1PDA);
+      // console.log("Reserve1 Account:", reserve1Account);
+      // Get Reserve2 PDA
+      const reserve2Key = new anchor.BN(2); // Using key = 2
+      const reserve2KeyBuffer = reserve2Key.toArrayLike(Buffer, 'le', 8);
+      const [reserve2PDA, reserve2Bump] = await PublicKey.findProgramAddress(
+        [
+          Buffer.from("reserve"),
+          reserve2KeyBuffer,
+          provider.wallet.publicKey.toBuffer(),
+        ],
+        program.programId
+      );
+      console.log("Reserve2 PDA:", reserve2PDA.toBase58());
+      const reserve2Account = await program.account.reserve.fetch(reserve2PDA);
+      // console.log("Reserve2 Account:", reserve2Account);
+      // Get Obligation PDA
+      const obligationKey = new anchor.BN(1); // Using key = 1
+      const obligationKeyBuffer = obligationKey.toArrayLike(Buffer, 'le', 8);
+      const [obligationPDA, obligationBump] = await PublicKey.findProgramAddress(
+        [
+          Buffer.from("obligation"),
+          obligationKeyBuffer,
+          provider.wallet.publicKey.toBuffer(),
+        ],
+        program.programId
+      );
+      console.log("Obligation PDA:", obligationPDA.toBase58());
+      // Attempt to fetch the obligation account; initialize if it doesn't exist
+      let obligationAccount = await program.account.obligation.fetchNullable(obligationPDA);
+      // console.log("Obligation Account:", obligationAccount);
+
+      // Get the mint token account for Reserve2's liquidity token
+      const reserve2LiquidityMint = reserve2Account.liquidity.mintPubkey;
+
+      // Get the mint token account for Reserve2's collateral
+      const reserve2CollateralMint = reserve2Account.collateral.mintPubkey;
+
+      // Get the Default signer's ATA for reserve2CollateralMint
+      const reserve2CollateralUserAccount = await getAssociatedTokenAddress(
+        reserve2CollateralMint,
+        provider.wallet.publicKey,
+        false,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+
+      // Get collateral reserve account for reserve2CollateralMint
+      const reserve2CollateralReserveAccount = reserve2Account.collateral.supplyPubkey;
+      // Create a new transaction
+      const transaction = new Transaction();
+
+      // Get unique reserves and add refresh_reserve instructions for all involved reserves
+      const uniqueReserves = [...new Set([
+        ...obligationAccount.deposits.map(deposit => deposit.depositReserve),
+        ...obligationAccount.borrows.map(borrow => borrow.borrowReserve)
+      ])];
+
+      for (const reservePubkey of uniqueReserves) {
+        const reserveAccount = await program.account.reserve.fetch(reservePubkey);
+        const refreshReserveIx = await program.methods
+          .refreshReserve(true) // is_test set to true
+          .accounts({
+            reserve: reservePubkey,
+            signer: provider.wallet.publicKey,
+            mockPythFeed: reserveAccount.mockPythFeed,
+          })
+          .instruction();
+        
+        transaction.add(refreshReserveIx);
+      }
+
+      // Add refresh_obligation instruction
+      const refreshObligationIx = await program.methods
+        .refreshObligation()
+        .accounts({
+          obligation: obligationPDA,
+        })
+        .remainingAccounts(uniqueReserves.map(reservePubkey => ({
+          pubkey: reservePubkey,
+          isWritable: true,
+          isSigner: false
+        })))
+        .instruction();
+
+      transaction.add(refreshObligationIx);
+
+      // Fetch reserve2 account state before deposit
+      const reserve2AccountBefore = await program.account.reserve.fetch(reserve2PDA);
+      console.log("Reserve2 Account before deposit:", {
+        totalLiquidity: reserve2AccountBefore.liquidity.availableAmount.toString(),
+        totalCollateral: reserve2AccountBefore.collateral.mintTotalSupply.toString(),
+      });
+
+      // Fetch obligation account state before deposit
+      const obligationAccountBefore = await program.account.obligation.fetch(obligationPDA);
+      console.log("Obligation Account before deposit:", {
+        depositedValue: obligationAccountBefore.depositedValue.toString(),
+        borrowedValue: obligationAccountBefore.borrowedValue.toString(),
+        allowedBorrowValue: obligationAccountBefore.allowedBorrowValue.toString(),
+        unhealthyBorrowValue: obligationAccountBefore.unhealthyBorrowValue.toString(),
+        depositsLength: obligationAccountBefore.deposits.length,
+      });
+
+      //Check reserv2's LP token balance(collateral token balance) before deposit
+      const reserve2CollateralBalanceBeforeDeposit = await provider.connection.getTokenAccountBalance(reserve2CollateralUserAccount);
+      console.log("Reserve2 Collateral Balance before deposit:", reserve2CollateralBalanceBeforeDeposit.value.uiAmountString);
+      
+      // Add deposit_obligation_collateral instruction for Reserve2
+      const depositObligationCollateralIx = await program.methods
+        .depositObligationCollateral(new anchor.BN(reserve2CollateralBalanceBeforeDeposit.value.amount))
+        .accounts({
+          collateralUserAccount: reserve2CollateralUserAccount,
+          collateralReserveAccount: reserve2CollateralReserveAccount,
+          depositReserve: reserve2PDA,
+          obligation: obligationPDA,
+          lendingMarket: lendingMarketPDA,
+          signer: provider.wallet.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .instruction();
+
+      transaction.add(depositObligationCollateralIx);
+      await provider.sendAndConfirm(transaction);
+      console.log("Deposited obligation collateral for Reserve2");
+
+      // After fetching the updated obligation account
+      const updatedObligationAccount = await program.account.obligation.fetch(obligationPDA);
+
+      const uniqueReserves2 = [...new Set([
+        ...updatedObligationAccount.deposits.map(deposit => deposit.depositReserve),
+        ...updatedObligationAccount.borrows.map(borrow => borrow.borrowReserve)
+      ])];
+
+      // Create a new transaction for refreshing reserves and obligation
+      const refreshTransaction = new Transaction();
+
+      // Add refresh_reserve instructions for all involved reserves
+      for (const reservePubkey of uniqueReserves2) {
+        const reserveAccount = await program.account.reserve.fetch(reservePubkey);
+        const refreshReserveIx = await program.methods
+          .refreshReserve(true) // is_test set to true
+          .accounts({
+            reserve: reservePubkey,
+            signer: provider.wallet.publicKey,
+            mockPythFeed: reserveAccount.mockPythFeed,
+          })
+          .instruction();
+        
+        refreshTransaction.add(refreshReserveIx);
+      }
+
+      // Add refresh_obligation instruction
+      const refreshObligationIx2 = await program.methods
+        .refreshObligation()
+        .accounts({
+          obligation: obligationPDA,
+        })
+        .remainingAccounts(uniqueReserves2.map(reservePubkey => ({
+          pubkey: reservePubkey,
+          isWritable: true,
+          isSigner: false
+        })))
+        .instruction();
+
+      refreshTransaction.add(refreshObligationIx2);
+
+      // Send and confirm the refresh transaction
+      await provider.sendAndConfirm(refreshTransaction);
+
+      const obligationAccountAfter = await program.account.obligation.fetch(obligationPDA);
+
+      // Fetch reserve2 account state after deposit
+      const reserve2AccountAfter = await program.account.reserve.fetch(reserve2PDA);
+      console.log("Reserve2 Account after deposit:", {
+        totalLiquidity: reserve2AccountAfter.liquidity.availableAmount.toString(),
+        totalCollateral: reserve2AccountAfter.collateral.mintTotalSupply.toString(),
+      });
+
+      //Check reserv2's LP token balance(collateral token balance) after deposit
+      const reserve2CollateralBalanceAfterDeposit = await provider.connection.getTokenAccountBalance(reserve2CollateralUserAccount);
+      console.log("Reserve2 Collateral Balance after deposit:", reserve2CollateralBalanceAfterDeposit.value.uiAmountString);
+
+      // Check if the obligation's deposits array has updated with the new deposit
+      const newDeposit = obligationAccountAfter.deposits.find(
+        deposit => deposit.depositReserve.equals(reserve2PDA)
+      );
+
+      if (newDeposit) {
+        console.log("New deposit verified in the obligation's deposits array:", {
+          depositReserve: newDeposit.depositReserve.toString(),
+          depositedAmount: newDeposit.depositedAmount.toString(),
+        });
+      } else {
+        console.log("New deposit not found in the obligation's deposits array");
+      }
+
+      // Verify changes in reserve2 account
+      console.log("Changes in Reserve2 Account:");
+      console.log("Total Liquidity change:", 
+        reserve2AccountAfter.liquidity.availableAmount.sub(reserve2AccountBefore.liquidity.availableAmount).toString()
+      );
+      console.log("Total Collateral change:", 
+        reserve2AccountAfter.collateral.mintTotalSupply.sub(reserve2AccountBefore.collateral.mintTotalSupply).toString()
+      );
+
+      // Verify changes in obligation account
+      console.log("Changes in Obligation Account:");
+      console.log("Deposited Value change:", 
+        obligationAccountAfter.depositedValue.sub(obligationAccountBefore.depositedValue).toString()
+      );
+      console.log("Borrowed Value change:", 
+        obligationAccountAfter.borrowedValue.sub(obligationAccountBefore.borrowedValue).toString()
+      );
+      console.log("Allowed Borrow Value change:", 
+        obligationAccountAfter.allowedBorrowValue.sub(obligationAccountBefore.allowedBorrowValue).toString()
+      );
+      console.log("Unhealthy Borrow Value change:", 
+        obligationAccountAfter.unhealthyBorrowValue.sub(obligationAccountBefore.unhealthyBorrowValue).toString()
+      );
+
+      // Check changes in ObligationCollateral vector
+      console.log("ObligationCollateral vector changes:");
+      console.log("Deposits length before:", obligationAccountBefore.deposits.length);
+      console.log("Deposits length after:", obligationAccountAfter.deposits.length);
+
+      // Check changes in obligation account deposit values
+      console.log("Obligation Account deposit value changes:");
+      obligationAccountAfter.deposits.forEach((deposit, index) => {
+        const beforeDeposit = obligationAccountBefore.deposits[index];
+        if (beforeDeposit && deposit.depositReserve.equals(beforeDeposit.depositReserve)) {
+          console.log(`Deposit ${index} changes:`);
+          console.log(`  Deposit reserve: ${deposit.depositReserve.toString()}`);
+          console.log(`  Deposited amount change: ${deposit.depositedAmount.sub(beforeDeposit.depositedAmount).toString()}`);
+          console.log(`  Market value change: ${deposit.marketValue.sub(beforeDeposit.marketValue).toString()}`);
+          console.log(`  Attributed borrow value change: ${deposit.attributedBorrowValue.sub(beforeDeposit.attributedBorrowValue).toString()}`);
+        } else {
+          console.log(`New deposit ${index}:`);
+          console.log(`  Deposit reserve: ${deposit.depositReserve.toString()}`);
+          console.log(`  Deposited amount: ${deposit.depositedAmount.toString()}`);
+          console.log(`  Market value: ${deposit.marketValue.toString()}`);
+          console.log(`  Attributed borrow value: ${deposit.attributedBorrowValue.toString()}`);
+        }
+      });
+
+      // Check deposited_value changes
+      console.log("Obligation Account deposited_value changes:");
+      console.log(`  Before deposit: ${obligationAccountBefore.depositedValue.toString()}`);
+      console.log(`  After deposit: ${obligationAccountAfter.depositedValue.toString()}`);
+      console.log(`  Change: ${obligationAccountAfter.depositedValue.sub(obligationAccountBefore.depositedValue).toString()}`);
+
+      // Check if the new deposit matches reserve2
+      const matchingDeposit = obligationAccountAfter.deposits.find(
+        deposit => deposit.depositReserve.equals(reserve2PDA)
+      );
+
+      if (matchingDeposit) {
+        console.log("New deposit matches Reserve2:", {
+          depositReserve: matchingDeposit.depositReserve.toString(),
+          depositedAmount: matchingDeposit.depositedAmount.toString(),
+        });
+      } else {
+        console.log("No matching deposit found for Reserve2");
+      }
+    } catch (error) {
+      console.error("Error during deposit_obligation_collateral_with_multiple_reserves test:", error);
+      throw error;
+    }
+  });
 });
