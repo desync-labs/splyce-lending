@@ -2964,7 +2964,7 @@ describe("splyce-lending", () => {
     }
   });
 
-  it("deposit_obligation_collateral_with_multiple_reserves", async () => {
+  it("deposit_obligation_collateral_with_second_reserve_LP_token", async () => {
     try {
       // 1. Get Lending Market, Reserve1, Reserve2 and Obligation PDAs
       const [lendingMarketPDA, lendingMarketBump] = await PublicKey.findProgramAddress(
@@ -3250,6 +3250,270 @@ describe("splyce-lending", () => {
       }
     } catch (error) {
       console.error("Error during deposit_obligation_collateral_with_multiple_reserves test:", error);
+      throw error;
+    }
+  });
+
+  it("withdraw_obligation_collateral_from_second_reserve_LP_token", async () => {
+    try {
+      // 1) Fetch necessary accounts and PDAs
+  
+      // Fetch the necessary accounts.
+      const payer = provider.wallet.publicKey;
+  
+      // Get the lending market PDA.
+      const [lendingMarketPDA, lendingMarketBump] = await PublicKey.findProgramAddress(
+        [provider.wallet.publicKey.toBuffer()],
+        program.programId
+      );
+      console.log("Lending Market PDA:", lendingMarketPDA.toBase58());
+  
+      // Fetch the second reserve PDA.
+      const obligation1Key = new anchor.BN(1);
+      const keyBufferObligation1 = obligation1Key.toArrayLike(Buffer, "le", 8);
+      const reserve2key = new anchor.BN(2);
+      const keyBufferReserve2 = reserve2key.toArrayLike(Buffer, "le", 8);
+  
+      const [reserve2PDA, reserveBump] = await PublicKey.findProgramAddress(
+        [Buffer.from("reserve"), keyBufferReserve2, provider.wallet.publicKey.toBuffer()],
+        program.programId
+      );
+      console.log("Reserve2 PDA:", reserve2PDA.toBase58());
+      // Fetch the obligation PDA.
+      const [obligationPDA, obligationBump] = await PublicKey.findProgramAddress(
+        [Buffer.from("obligation"), keyBufferObligation1, provider.wallet.publicKey.toBuffer()],
+        program.programId
+      );
+      console.log("Obligation PDA:", obligationPDA.toBase58());
+      // Fetch the reserve account.
+      const reserveAccount = await program.account.reserve.fetch(reserve2PDA);
+
+      // Fetch the obligation account.
+      let obligationAccount = await program.account.obligation.fetch(obligationPDA);
+  
+      // 2) Ensure that the obligation has some collateral deposited.
+      // Collateral Mint Account
+      const collateralMintPubkey = reserveAccount.collateral.mintPubkey;
+  
+      // Collateral User Account (the user's cToken account)
+      const collateralUserAccount = await getAssociatedTokenAddress(
+        collateralMintPubkey,
+        provider.wallet.publicKey,
+        false,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+  
+      // Collateral Reserve Account (2nd reserve's cToken account)
+      const collateralReserveAccountPubkey = reserveAccount.collateral.supplyPubkey;
+  
+      // 3) Determine the amount of collateral to withdraw
+  
+      // Let's withdraw half of the collateral in the obligation
+      const depositEntry = obligationAccount.deposits[1];
+      const collateralAmountDeposited = depositEntry.depositedAmount;
+  
+      const collateralAmountToWithdraw = collateralAmountDeposited.div(new anchor.BN(2)); // Withdraw half
+  
+      if (collateralAmountToWithdraw.lte(new anchor.BN(0))) {
+        throw new Error("Insufficient collateral to withdraw.");
+      }
+  
+      console.log(`Withdrawing ${collateralAmountToWithdraw.toString()} cTokens from the obligation.`);
+  
+      // Fetch the collateral balance before withdrawal
+      const collateralBalanceBeforeWithdraw = await provider.connection.getTokenAccountBalance(collateralUserAccount);
+      const collateralBalanceBeforeWithdrawAmount = parseFloat(collateralBalanceBeforeWithdraw.value.uiAmountString || "0");
+  
+      // Fetch the reserve's collateral reserve account balance before withdrawal
+      const collateralReserveBalanceBeforeWithdraw = await provider.connection.getTokenAccountBalance(collateralReserveAccountPubkey);
+      const collateralReserveBalanceBeforeWithdrawAmount = parseFloat(collateralReserveBalanceBeforeWithdraw.value.uiAmountString || "0");
+  
+      // Fetch all deposit reserves
+      const depositReserves = obligationAccount.deposits.map((deposit) => deposit.depositReserve);
+  
+      console.log("Deposit Reserves:", depositReserves.map((pk) => pk.toBase58()));
+      console.log("Obligation state before withdrawal:");
+      console.log("Deposits:", obligationAccount.deposits);
+      console.log("Borrows:", obligationAccount.borrows);
+  
+      // 4) Create a transaction including refreshReserve and withdrawObligationCollateral
+  
+      const uniqueReserves = [...new Set([
+        ...obligationAccount.deposits.map(deposit => deposit.depositReserve),
+        ...obligationAccount.borrows.map(borrow => borrow.borrowReserve)
+      ])];
+      
+      // Create a new transaction
+      const transaction = new anchor.web3.Transaction();
+      
+      // Add refresh_reserve instructions for all involved reserves
+      for (const reservePubkey of uniqueReserves) {
+        const reserveAccount = await program.account.reserve.fetch(reservePubkey);
+        const refreshReserveIx = await program.methods
+          .refreshReserve(true) // is_test set to true
+          .accounts({
+            reserve: reservePubkey,
+            signer: provider.wallet.publicKey,
+            mockPythFeed: reserveAccount.mockPythFeed,
+          })
+          .instruction();
+        
+        transaction.add(refreshReserveIx);
+      }
+      // Create a new transaction for refreshing reserves and obligation before withdrawal
+      const preWithdrawalTransaction = new anchor.web3.Transaction();
+
+      // Add refresh_reserve instructions for all involved reserves
+      for (const reservePubkey of uniqueReserves) {
+        const reserveAccount = await program.account.reserve.fetch(reservePubkey);
+        const refreshReserveIx = await program.methods
+          .refreshReserve(true) // is_test set to true
+          .accounts({
+            reserve: reservePubkey,
+            signer: provider.wallet.publicKey,
+            mockPythFeed: reserveAccount.mockPythFeed,
+          })
+          .instruction();
+        
+        preWithdrawalTransaction.add(refreshReserveIx);
+      }
+
+      // Add refresh_obligation instruction to the pre-withdrawal transaction
+      const refreshObligationBeforeWithdrawIx = await program.methods
+        .refreshObligation()
+        .accounts({
+          obligation: obligationPDA,
+        })
+        .remainingAccounts(uniqueReserves.map(reservePubkey => ({
+          pubkey: reservePubkey,
+          isWritable: true,
+          isSigner: false
+        })))
+        .instruction();
+
+      preWithdrawalTransaction.add(refreshObligationBeforeWithdrawIx);
+
+      // Send and confirm the pre-withdrawal transaction
+      await provider.sendAndConfirm(preWithdrawalTransaction);
+
+      // Fetch obligation account after refresh but before withdrawal
+      const obligationAfterRefresh = await program.account.obligation.fetch(obligationPDA);
+
+      console.log("Obligation state after refresh but before withdrawal:");
+      console.log("Deposited Value:", obligationAfterRefresh.depositedValue.toString());
+      console.log("Allowed Borrow Value:", obligationAfterRefresh.allowedBorrowValue.toString());
+      console.log("Unhealthy Borrow Value:", obligationAfterRefresh.unhealthyBorrowValue.toString());
+      
+      // Add refresh_obligation instruction with proper remaining accounts
+      const refreshObligationIx = await program.methods
+        .refreshObligation()
+        .accounts({
+          obligation: obligationPDA,
+        })
+        .remainingAccounts(uniqueReserves.map(reservePubkey => ({
+          pubkey: reservePubkey,
+          isWritable: true,
+          isSigner: false
+        })))
+        .instruction();
+      
+      transaction.add(refreshObligationIx);
+  
+      // Add withdrawObligationCollateral instruction
+      const withdrawObligationCollateralIx = await program.methods
+        .withdrawObligationCollateral(collateralAmountToWithdraw)
+        .accounts({
+          collateralUserAccount: collateralUserAccount,
+          collateralReserveAccount: collateralReserveAccountPubkey,
+          withdrawReserve: reserve2PDA,
+          obligation: obligationPDA,
+          lendingMarket: lendingMarketPDA,
+          signer: provider.wallet.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .remainingAccounts(
+          depositReserves
+            // Exclude the withdrawReserve from remainingAccounts if necessary
+            // .filter((reservePubkey) => !reservePubkey.equals(reservePDA))
+            .map((reservePubkey) => ({
+              pubkey: reservePubkey,
+              isWritable: true,
+              isSigner: false,
+            }))
+        )
+        .instruction();
+  
+      transaction.add(withdrawObligationCollateralIx);
+  
+      // 5) Send and confirm the transaction
+      await provider.sendAndConfirm(transaction);
+  
+      console.log("Withdrawn obligation collateral.");
+      // Fetch and log the obligation state after withdrawal
+      const obligationAfterWithdraw = await program.account.obligation.fetch(obligationPDA);
+      console.log("Obligation state after withdrawal:");
+      console.log("Deposited Value:", obligationAfterWithdraw.depositedValue.toString());
+      console.log("Allowed Borrow Value:", obligationAfterWithdraw.allowedBorrowValue.toString());
+      console.log("Unhealthy Borrow Value:", obligationAfterWithdraw.unhealthyBorrowValue.toString());
+
+      // Compare before and after states
+      console.log("Changes in Obligation state:");
+      console.log("Deposited Value change:", 
+        obligationAfterWithdraw.depositedValue.sub(obligationAfterRefresh.depositedValue).toString());
+      console.log("Allowed Borrow Value change:", 
+        obligationAfterWithdraw.allowedBorrowValue.sub(obligationAfterRefresh.allowedBorrowValue).toString());
+      console.log("Unhealthy Borrow Value change:", 
+        obligationAfterWithdraw.unhealthyBorrowValue.sub(obligationAfterRefresh.unhealthyBorrowValue).toString());
+      // 6) Verify the results
+  
+      // Fetch the collateral balance after withdrawal
+      const collateralBalanceAfterWithdraw = await provider.connection.getTokenAccountBalance(collateralUserAccount);
+      const collateralBalanceAfterWithdrawAmount = parseFloat(collateralBalanceAfterWithdraw.value.uiAmountString || "0");
+      console.log(`Collateral Token Balance after withdrawal: ${collateralBalanceAfterWithdrawAmount} CTokens`);
+  
+      // The user's collateral token balance should increase by the withdrawn amount.
+      const decimals = collateralBalanceAfterWithdraw.value.decimals;
+      const collateralAmountToWithdrawDecimal = collateralAmountToWithdraw.toNumber() / Math.pow(10, decimals);
+      const expectedCollateralBalanceAfterWithdraw = collateralBalanceBeforeWithdrawAmount + collateralAmountToWithdrawDecimal;
+  
+      assert.closeTo(
+        collateralBalanceAfterWithdrawAmount,
+        expectedCollateralBalanceAfterWithdraw,
+        0.0001,
+        `Collateral Token balance should increase by the withdrawn amount`
+      );
+  
+      // Fetch the obligation account to verify the withdrawal.
+      const obligationAccountAfterWithdraw = await program.account.obligation.fetch(obligationPDA);
+  
+      // Verify that the obligation's deposits array has updated the depositedAmount
+      const depositEntryAfter = obligationAccountAfterWithdraw.deposits[1];
+      const expectedDepositedAmount = collateralAmountDeposited.sub(collateralAmountToWithdraw);
+      assert.strictEqual(
+        depositEntryAfter.depositedAmount.toString(),
+        expectedDepositedAmount.toString(),
+        "Obligation depositedAmount should decrease by the withdrawn amount."
+      );
+  
+      // Verify that the reserve's collateral reserve account balance decreased by the withdrawn amount.
+      const collateralReserveBalanceAfterWithdraw = await provider.connection.getTokenAccountBalance(collateralReserveAccountPubkey);
+      const collateralReserveBalanceAfterWithdrawAmount = parseFloat(collateralReserveBalanceAfterWithdraw.value.uiAmountString || "0");
+      console.log(`Collateral Reserve Account Balance after withdrawal: ${collateralReserveBalanceAfterWithdrawAmount} CTokens`);
+  
+      const expectedCollateralReserveBalanceAfterWithdraw =
+        collateralReserveBalanceBeforeWithdrawAmount - collateralAmountToWithdrawDecimal;
+  
+      assert.closeTo(
+        collateralReserveBalanceAfterWithdrawAmount,
+        expectedCollateralReserveBalanceAfterWithdraw,
+        0.0001,
+        `Collateral Reserve Account balance should decrease by the withdrawn amount`
+      );
+  
+      console.log("Obligation withdrawal verified.");
+    } catch (error) {
+      console.error("Error during withdraw_obligation_collateral test:", error);
       throw error;
     }
   });
