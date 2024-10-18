@@ -133,6 +133,8 @@ pub fn handle_refresh_obligation<'info>(
         let market_value_upper_bound = borrow_reserve.market_value_upper_bound(liquidity.borrowed_amount_wads)?;
         liquidity.market_value = market_value;
 
+        //TODO debug below logic more carefully once borrow logic is introduced
+        //I don't think PERCENT_SCALER is being used correctly below
         borrowed_value = borrowed_value
             .checked_add(market_value.checked_mul(borrow_reserve.borrow_weight() as u128).ok_or(ErrorCode::MathOverflow)?.checked_div(PERCENT_SCALER as u128).ok_or(ErrorCode::MathOverflow)?)
             .ok_or(ErrorCode::MathOverflow)?;

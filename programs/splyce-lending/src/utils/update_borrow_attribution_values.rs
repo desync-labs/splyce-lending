@@ -8,7 +8,7 @@ use crate::error::ErrorCode;
 /// Prerequisites:
 /// - the collateral's market value must be refreshed
 /// - the obligation's deposited_value must be refreshed
-/// - the obligation's true_borrowed_value must be refreshed
+/// - the obligation's true_borrowed_value must be refreshed <- TODO this is to be checked after borrow and repay are implemented
 ///
 /// Note that this function packs and unpacks deposit reserves.
 pub fn update_borrow_attribution_values<'info>(

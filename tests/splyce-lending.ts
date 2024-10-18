@@ -603,8 +603,8 @@ describe("splyce-lending", () => {
           flashLoanFeeWad: new anchor.BN(0),
           hostFeePercentage: 0,
         },
-        depositLimit: new anchor.BN(1000 * LAMPORTS_PER_SOL),
-        borrowLimit: new anchor.BN(500 * LAMPORTS_PER_SOL),
+        depositLimit: new anchor.BN(10000 * LAMPORTS_PER_SOL),
+        borrowLimit: new anchor.BN(9000 * LAMPORTS_PER_SOL),
         feeReceiver: liquidityFeeAccount, // Ensure feeReceiver is correctly handled if needed
         protocolLiquidationFee: 1,
         protocolTakeRate: 1,
@@ -612,8 +612,8 @@ describe("splyce-lending", () => {
         reserveType: { regular: {} },
         scaledPriceOffsetBps: new anchor.BN(0),
         extraOraclePubkey: null,
-        attributedBorrowLimitOpen: new anchor.BN(0),
-        attributedBorrowLimitClose: new anchor.BN(0),
+        attributedBorrowLimitOpen: new anchor.BN(5000 * LAMPORTS_PER_SOL),
+        attributedBorrowLimitClose: new anchor.BN(7000 * LAMPORTS_PER_SOL),
         reserveSetterProgramId: null,
       };
   

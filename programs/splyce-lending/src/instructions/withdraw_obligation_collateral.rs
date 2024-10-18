@@ -99,7 +99,7 @@ pub fn handle_withdraw_obligation_collateral<'info>(
 
     // Calculate withdraw amount
     let max_withdraw_amount = obligation.max_withdraw_amount(collateral, withdraw_reserve)?;
-    let withdraw_amount = min(collateral_amount, max_withdraw_amount);
+    let withdraw_amount = min(collateral_amount, max_withdraw_amount); //withdraw amount is in lamports(1e9) scale
 
     if withdraw_amount == 0 {
         msg!("Maximum withdraw value is zero");

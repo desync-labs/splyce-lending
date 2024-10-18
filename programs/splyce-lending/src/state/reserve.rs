@@ -101,6 +101,8 @@ impl Reserve {
 
     /// get borrow weight. Guaranteed to be greater than 1
     pub fn borrow_weight(&self) -> u128 {
+        //TODO div by 10_000 is needed for borrow weight bps.
+        //TODO check calculations that use this
         1u128 + self.config.added_borrow_weight_bps as u128
     }
 
@@ -363,6 +365,7 @@ pub fn usd_to_liquidity_amount_lower_bound(
     /// Collateral exchange rate
     pub fn collateral_exchange_rate(&self) -> Result<CollateralExchangeRate> {
         let total_liquidity = self.liquidity.total_supply()?;
+        msg!("reserve.collateral_exchange_rate(): total_liquidity: {}", total_liquidity);
         self.collateral.exchange_rate(total_liquidity)
     }
 
@@ -380,6 +383,7 @@ pub fn usd_to_liquidity_amount_lower_bound(
     }    
 
     /// Borrow liquidity up to a maximum market value
+    // TODO debug again once borrow logic is introduced
     pub fn calculate_borrow(
         &self,
         amount_to_borrow: u64,
@@ -641,6 +645,7 @@ pub fn usd_to_liquidity_amount_lower_bound(
     }
 
     /// Calculate protocol fee redemption accounting for availible liquidity and accumulated fees
+    // TODO debug again once borrow logic is introduced
     pub fn calculate_redeem_fees(&self) -> Result<u64> {
         Ok(min(
             self.liquidity.available_amount,
@@ -809,6 +814,9 @@ impl ReserveLiquidity {
             msg!("Withdraw amount cannot exceed available amount");
             return Err(ErrorCode::InsufficientLiquidity.into());
         }
+        msg!("reserve.withdraw(self, liquidity_amount)");
+        msg!("liquidity_amount: {}", liquidity_amount);
+        msg!("self.available_amount: {}", self.available_amount); //available_amount and liquidity_amount should be in same scale
         self.available_amount = self
             .available_amount
             .checked_sub(liquidity_amount)
@@ -1044,7 +1052,10 @@ impl ReserveCollateral {
         } else {
             let mint_total_supply = self.mint_total_supply as u128;
             let rate = mint_total_supply
-                .checked_mul(WAD as u128)
+                .checked_mul(WAD as u128) // WAD는 그냥 1e6만 0을 더 붙이는 개념이 되는거임
+                //TODO while I was investigating total_supply(), I saw borrowed_amount_wads.
+                //이게 언제 처음 생성되는지, 언제 업데이트 되는지, 언제 스케일링이 이루어지는지 확인 해야함
+                //바로우는 빌릴때 업데이트 되는구나... 하 빨리 바로우로 넘어가야겠네
                 .ok_or(ErrorCode::MathOverflow)?
                 .checked_div(total_liquidity)
                 .ok_or(ErrorCode::MathOverflow)?;
@@ -1082,7 +1093,7 @@ impl CollateralExchangeRate {
         let liquidity_amount = collateral_amount
             .checked_mul(WAD as u128)
             .ok_or(ErrorCode::MathOverflow)?
-            .checked_div(self.0)
+            .checked_div(self.0) //self.0 is the exchangeRate which is in scale of WAD // TODO Debug again after borrow and repay are implemented
             .ok_or(ErrorCode::MathOverflow)?;
 
         Ok(liquidity_amount
@@ -1152,7 +1163,7 @@ pub struct ReserveConfig {
     /// Protocol take rate is the amount borrowed interest protocol recieves, as a percentage  
     pub protocol_take_rate: u8,
     /// Added borrow weight in basis points. THIS FIELD SHOULD NEVER BE USED DIRECTLY. Always use
-    /// borrow_weight()
+    /// borrow_weight(), makes borrowed value higher than it should be. Restricting borrow value
     pub added_borrow_weight_bps: u64,
     /// Type of the reserve (Regular, Isolated)
     pub reserve_type: ReserveType,

@@ -139,17 +139,21 @@ impl Obligation {
         if loan_to_value_ratio == 0 {
             return Ok(collateral.deposited_amount);
         }
-    
+        
+        //TODO debug again once borrow logic is introduced
         // Calculate max withdraw value
         let max_withdraw_value = self
             .allowed_borrow_value //u128
             .checked_sub(self.borrowed_value_upper_bound) //u128
             .ok_or(ErrorCode::MathOverflow)?
-            .checked_mul(WAD as u128) //u128
+            .checked_mul(100 as u128) //u128
             .ok_or(ErrorCode::MathOverflow)?
             .checked_div(loan_to_value_ratio) //u128
             .ok_or(ErrorCode::MathOverflow)?;
-    
+        msg!("loan_to_value_ratio: {}", loan_to_value_ratio);
+        msg!("allowed_borrow_value: {}", self.allowed_borrow_value);
+        msg!("borrowed_value_upper_bound: {}", self.borrowed_value_upper_bound);
+        msg!("max_withdraw_value: {}", max_withdraw_value);
         // Convert to liquidity amount
         let price = withdraw_reserve.price_lower_bound();
         let decimals = pow10(withdraw_reserve.liquidity.mint_decimals as u32)?;
@@ -158,12 +162,18 @@ impl Obligation {
             .ok_or(ErrorCode::MathOverflow)?
             .checked_div(price)
             .ok_or(ErrorCode::MathOverflow)?;
-    
+        msg!("price: {}", price);
+        msg!("decimals: {}", decimals);
+        msg!("max_withdraw_liquidity_amount: {}", max_withdraw_liquidity_amount);
         // Convert to collateral amount
         let collateral_amount = withdraw_reserve
             .collateral_exchange_rate()?
             .u128_liquidity_to_collateral(max_withdraw_liquidity_amount)?;
-    
+        //I also want to log collateral_exchange_rate()
+        //For Debugging
+        let col_exchange_rate = withdraw_reserve.collateral_exchange_rate();
+        msg!("collateral exchange rate: {:?}", col_exchange_rate);
+        msg!("collateral_amount: {}", collateral_amount);
         Ok(std::cmp::min(
             collateral_amount.try_into().map_err(|_| ErrorCode::MathOverflow)?,
             collateral.deposited_amount,
